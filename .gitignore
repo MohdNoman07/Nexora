@@ -37,3 +37,11 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# LaTeX temporary files
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
