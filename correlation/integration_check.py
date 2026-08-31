@@ -52,7 +52,7 @@ def to_dict_with_id(event) -> dict:
 # --- Check 1: normal traffic should produce zero incidents ----------------
 
 gen = NormalTrafficGenerator(seed=7)
-normal_events = [to_dict_with_id(e) for e in gen.stream(30)]
+normal_events = [to_dict_with_id(e) for e in gen.stream_sessions(30)]
 
 graph = EventGraph()
 for e in normal_events:
