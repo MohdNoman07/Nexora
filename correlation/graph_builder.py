@@ -1,15 +1,29 @@
 """
 Builds an entity-linked event graph: events are nodes, and edges connect
-events that share an entity (user, source_ip, session) within a sliding
-time window. This is the structure the template matcher (matcher.py)
-walks to find attack chains.
+events that share an entity (user, ip, session) within a sliding time
+window. This is the structure the template matcher (matcher.py) walks to
+find attack chains.
+
+WEEK 2 FIX: link field was "source_ip", the canonical schema
+(p2-pipeline/schema/event_schema.json) calls it "ip". Also: add_event() now
+accepts a timestamp as either a datetime or an ISO 8601 string, because
+that's what P2's simulator actually emits (Event.timestamp is a string) --
+Week 1's version assumed datetime objects and would have broken on real data.
 """
 
 import networkx as nx
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-LINK_FIELDS = ["user", "source_ip", "session"]
+LINK_FIELDS = ["user", "ip", "session"]
 DEFAULT_WINDOW = timedelta(minutes=10)
+
+
+def _as_datetime(ts):
+    """Accept either a datetime or an ISO 8601 string (P2's simulator emits strings)."""
+    if isinstance(ts, datetime):
+        return ts
+    # handles the "...Z" suffix P2's generator produces
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
 class EventGraph:
@@ -19,9 +33,12 @@ class EventGraph:
 
     def add_event(self, event: dict):
         """
-        event must contain at least: id, event_type, timestamp (datetime),
-        plus whichever entity fields it has (user / source_ip / session).
+        event must contain at least: id, event_type, timestamp,
+        plus whichever entity fields it has (user / ip / session).
+        timestamp can be a datetime or an ISO 8601 string.
         """
+        event = dict(event)  # don't mutate caller's dict
+        event["timestamp"] = _as_datetime(event["timestamp"])
         self.graph.add_node(event["id"], **event)
         self._link_related_events(event)
 
