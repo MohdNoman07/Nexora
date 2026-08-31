@@ -1,27 +1,27 @@
 export type EventType =
-  | "AUTH_FAILURE"
-  | "AUTH_SUCCESS"
-  | "API_REQUEST"
-  | "DB_ACCESS"
-  | "FILE_ACCESS"
-  | "NETWORK_CONNECTION"
-  | "DATA_TRANSFER";
-
-export type Severity = "info" | "low" | "medium" | "high" | "critical";
-export type IncidentSeverity = "low" | "medium" | "high" | "critical";
+  | "auth_login_success"
+  | "auth_login_failure"
+  | "auth_logout"
+  | "api_call"
+  | "db_query"
+  | "file_access"
+  | "port_scan"
+  | "brute_force_attempt"
+  | "privilege_escalation"
+  | "data_exfiltration";
 
 export interface NexoraEvent {
-  id: string;
   event_type: EventType;
   timestamp: string;
   user: string;
   ip: string;
   session: string;
-  severity: Severity;
-  anomaly_score?: number;
-  attack_label?: string;
+  severity: number;
   metadata?: Record<string, string | number>;
+  id?: string;
+  attack_label?: string;
 }
+export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 
 export interface Incident {
   id: string;
