@@ -3,14 +3,12 @@ import type { NexoraEvent } from "../types/nexora";
 interface LiveFeedProps {
   events: NexoraEvent[];
 }
-
-const severityColor: Record<string, string> = {
-  info: "#6b7280",
-  low: "#3b82f6",
-  medium: "#f59e0b",
-  high: "#ef4444",
-  critical: "#991b1b",
-};
+function severityColor(score: number): string {
+  if (score >= 0.8) return "#991b1b";
+  if (score >= 0.6) return "#ef4444";
+  if (score >= 0.35) return "#f59e0b";
+  return "#3b82f6";
+}
 
 export function LiveFeed({ events }: LiveFeedProps) {
   return (
@@ -18,10 +16,10 @@ export function LiveFeed({ events }: LiveFeedProps) {
       <h2>Live Activity Feed</h2>
       <ul>
         {events.map((e) => (
-          <li key={e.id} className="feed-row">
+          <li key={e.id ?? `${e.session}-${e.timestamp}`} className="feed-row">
             <span
               className="severity-dot"
-              style={{ background: severityColor[e.severity] }}
+              style={{ background: severityColor(e.severity) }}
             />
             <span className="event-type">{e.event_type}</span>
             <span className="event-user">{e.user}</span>
