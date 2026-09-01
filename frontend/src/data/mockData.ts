@@ -1,4 +1,5 @@
 import type { NexoraEvent, Incident } from "../types/nexora";
+
 export const mockEvents: NexoraEvent[] = [
   {
     id: "evt-001",
@@ -52,21 +53,12 @@ export const mockEvents: NexoraEvent[] = [
 
 export const mockIncidents: Incident[] = [
   {
-    id: "inc-001",
-    events: mockEvents,
-    severity: "critical",
-    confidence: 0.88,
-    attack_pattern: "credential_stuffing_chain",
-    timeline: {
-      started_at: "2026-08-24T09:12:01Z",
-      ended_at: "2026-08-24T09:15:30Z",
-    },
-    recommended_action:
-      "Lock account j.patel, force password reset, review data-transfer destination for exfiltration.",
-    entities: {
-      users: ["j.patel"],
-      ips: ["203.0.113.14"],
-      sessions: ["sess-a1"],
-    },
+    template_name: "credential_stuffing_chain",
+    description:
+      "Repeated failed logins followed by success and sensitive data access.",
+    matched_events: ["evt-001", "evt-002", "evt-003", "evt-004", "evt-005"],
+    entity: { user: "j.patel", ip: "203.0.113.14" },
+    start_time: "2026-08-24T09:12:01Z",
+    end_time: "2026-08-24T09:15:30Z",
   },
 ];

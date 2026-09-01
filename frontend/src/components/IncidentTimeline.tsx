@@ -9,11 +9,11 @@ export function IncidentTimeline({ incidents }: IncidentTimelineProps) {
     <div className="panel incident-timeline">
       <h2>Incident Timeline</h2>
       {incidents.map((inc) => (
-        <div key={inc.id} className="timeline-row">
-          <strong>{inc.attack_pattern}</strong>
-          <span> — {inc.events.length} linked events — </span>
-          <span className={`badge severity-${inc.severity}`}>
-            {inc.severity}
+        <div key={inc.template_name + inc.start_time} className="timeline-row">
+          <strong>{inc.template_name}</strong>
+          <span> — {inc.matched_events.length} linked events — </span>
+          <span className="badge">
+            {inc.start_time} → {inc.end_time}
           </span>
         </div>
       ))}

@@ -18,14 +18,19 @@ export function EvidencePanel({ incident }: EvidencePanelProps) {
     <div className="panel evidence-panel">
       <h2>Evidence & Recommended Action</h2>
       <p>
-        <strong>Confidence:</strong> {(incident.confidence * 100).toFixed(0)}%
+        <strong>Template:</strong> {incident.template_name}
       </p>
       <p>
-        <strong>Entities:</strong> {incident.entities.users.join(", ")} /{" "}
-        {incident.entities.ips.join(", ")}
+        <strong>Description:</strong> {incident.description}
       </p>
       <p>
-        <strong>Recommended action:</strong> {incident.recommended_action}
+        <strong>Entity:</strong>{" "}
+        {Object.entries(incident.entity)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ")}
+      </p>
+      <p>
+        <strong>Matched events:</strong> {incident.matched_events.join(", ")}
       </p>
     </div>
   );
