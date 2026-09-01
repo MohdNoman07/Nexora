@@ -53,11 +53,11 @@ export const mockEvents: NexoraEvent[] = [
 
 export const mockIncidents: Incident[] = [
   {
-    template_name: "credential_stuffing_chain",
+    template_name: "credential_compromise_exfiltration",
     description:
-      "Repeated failed logins followed by success and sensitive data access.",
+      "Burst of failed logins, a successful login, then database and file access -- all tied to the same user.",
     matched_events: ["evt-001", "evt-002", "evt-003", "evt-004", "evt-005"],
-    entity: { user: "j.patel", ip: "203.0.113.14" },
+    entity: { user: "j.patel" },
     start_time: "2026-08-24T09:12:01Z",
     end_time: "2026-08-24T09:15:30Z",
   },
