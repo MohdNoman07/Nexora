@@ -21,22 +21,12 @@ export interface NexoraEvent {
   id?: string;
   attack_label?: string;
 }
-export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 
 export interface Incident {
-  id: string;
-  events: NexoraEvent[];
-  severity: IncidentSeverity;
-  confidence: number;
-  attack_pattern: string;
-  timeline: {
-    started_at: string;
-    ended_at: string;
-  };
-  recommended_action: string;
-  entities: {
-    users: string[];
-    ips: string[];
-    sessions: string[];
-  };
+  template_name: string;
+  description: string;
+  matched_events: string[];
+  entity: Record<string, string>;
+  start_time: string;
+  end_time: string;
 }
