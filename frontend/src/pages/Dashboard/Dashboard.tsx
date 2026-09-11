@@ -1,171 +1,177 @@
-import { ChevronDown } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
-import { trafficChartData, attackTargetsData, mapData } from '../../data/uiMockData';
+import { Link } from 'react-router-dom';
+import { 
+  ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
+} from 'recharts';
+import { ShieldAlert, AlertTriangle, Activity, ArrowRight } from 'lucide-react';
+import { useSimulation } from '../../context/SimulationContext';
+import { format } from 'date-fns';
 
-const geoUrl = "https://unpkg.com/world-atlas@2.0.2/countries-110m.json";
+const getIncidentLabel = (templateName: string): string => {
+  const labels: Record<string, string> = {
+    credential_compromise_exfiltration: 'Credential Stuffing → Data Exfiltration',
+    port_scan_detected: 'Port Scan / Reconnaissance',
+    brute_force_attack: 'Brute Force Attack',
+  };
+  return labels[templateName] ?? templateName.replace(/_/g, ' ').toUpperCase();
+};
 
 const Dashboard = () => {
+  const { events: mockEvents, incidents: mockIncidents } = useSimulation();
+  // Compute metrics
+  const totalEvents = mockEvents.length;
+  // Events with an attack_label have been classified by the injector as confirmed attack events.
+  // This is the only grounded 'flagging' criterion in the current pipeline.
+  const labelledAttackEvents = mockEvents.filter(e => e.attack_label !== undefined).length;
+  const openIncidents = mockIncidents.length;
+  const criticalIncidents = mockIncidents.filter(i => i.severity === 'Critical').length;
+
+  // Chart data: sort events by time, format for Recharts
+  const chartData = [...mockEvents]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map(e => ({
+      time: format(new Date(e.timestamp), 'HH:mm:ss'),
+      score: e.anomaly_score,
+      label: e.attack_label || 'normal'
+    }));
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Threat Prevention</h1>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 bg-panel border border-border px-3 py-1.5 rounded-md text-sm hover:border-text-tertiary transition-colors">
-            All applications <ChevronDown className="w-4 h-4" />
-          </button>
-          <button className="flex items-center gap-2 bg-panel border border-border px-3 py-1.5 rounded-md text-sm hover:border-text-tertiary transition-colors">
-            24 Jan - 27 Feb <ChevronDown className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold tracking-tight text-text-primary">Security Overview</h1>
+        <p className="text-text-secondary">
+          Monitor suspicious activity and reconstructed security incidents across the simulated organisation.
+        </p>
       </div>
 
-      {/* Main Grid */}
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard title="Total Events" value={totalEvents} icon={<Activity className="text-accent-blue w-5 h-5" />} />
+        <MetricCard title="Attack-Labeled Events" value={labelledAttackEvents} icon={<AlertTriangle className="text-accent-orange w-5 h-5" />} />
+        <MetricCard title="Open Incidents" value={openIncidents} icon={<AlertTriangle className="text-accent-orange w-5 h-5" />} />
+        <MetricCard title="Critical Incidents" value={criticalIncidents} icon={<ShieldAlert className="text-accent-red w-5 h-5" />} isAlert={criticalIncidents > 0} />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Chart Section */}
-        <div className="lg:col-span-2 bg-panel border border-border rounded-xl p-5 flex flex-col h-[400px]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-lg text-text-primary">Normal and malicious traffic</h2>
-            <div className="flex bg-background border border-border rounded-md p-1">
-              <button className="px-3 py-1 text-xs rounded-sm text-text-secondary hover:text-text-primary transition-colors">Day</button>
-              <button className="px-3 py-1 text-xs rounded-sm bg-panel border border-border text-text-primary shadow-sm">Monthly</button>
-              <button className="px-3 py-1 text-xs rounded-sm text-text-secondary hover:text-text-primary transition-colors">Yearly</button>
-            </div>
+        <div className="lg:col-span-2 bg-panel border border-border rounded-xl p-5 flex flex-col shadow-sm">
+          <div className="mb-6">
+            <h2 className="font-semibold text-lg text-text-primary">Event Anomaly Scores</h2>
+            <p className="text-sm text-text-secondary">Scores shown from the simulated event stream</p>
           </div>
-          <div className="flex items-center gap-4 text-xs mb-6">
-             <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-transparent border-2 border-accent-red"></span> Incidents</div>
-             <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-transparent border-2 border-accent-blue"></span> Requests</div>
-             <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-transparent border-2 border-accent-orange"></span> Hits</div>
-          </div>
-          <div className="flex-1 min-h-0 relative -ml-4">
+          <div className="flex-1 min-h-[300px] -ml-4">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trafficChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorHits" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="name" hide />
-                <YAxis hide />
+              <ScatterChart margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} dy={10} />
+                <YAxis dataKey="score" domain={[0, 1]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderRadius: '8px' }}
-                  itemStyle={{ color: '#fff' }}
+                  contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  itemStyle={{ color: '#0f172a', fontWeight: 500 }}
+                  labelStyle={{ color: '#475569', marginBottom: '4px' }}
                 />
-                <Area type="monotone" dataKey="hits" stroke="#f97316" strokeWidth={2} fillOpacity={1} fill="url(#colorHits)" />
-                <Area type="monotone" dataKey="requests" stroke="#3b82f6" strokeWidth={2} fillOpacity={0} fill="none" />
-                <Area type="monotone" dataKey="incidents" stroke="#ef4444" strokeWidth={2} fillOpacity={0} fill="none" />
-              </AreaChart>
+                <Scatter data={chartData} shape="circle">
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.score >= 0.8 ? '#ef4444' : entry.score >= 0.5 ? '#f97316' : '#64748b'} />
+                  ))}
+                </Scatter>
+              </ScatterChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Summary KPIs */}
-        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col h-[400px]">
-          <h2 className="font-semibold text-lg text-text-primary mb-4">Summary for a period</h2>
-          <div className="flex-1 flex flex-col gap-2 justify-between">
-             <KPICard title="Incidents" value="10" change="25.6%" trend="down" color="red" />
-             <KPICard title="Hit blocked" value="5.38M" change="46.1%" trend="up" color="green" />
-             <KPICard title="Hits" value="8M" change="15.1%" trend="up" color="orange" />
-             <KPICard title="Requests" value="16.5M" change="" trend="" color="blue" />
+        {/* Correlation Preview */}
+        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col shadow-sm">
+          <div className="mb-4">
+            <h2 className="font-semibold text-lg text-text-primary">Correlation Engine</h2>
+            <p className="text-sm text-text-secondary">Example reconstructed attack chain</p>
           </div>
-        </div>
-      </div>
-
-      {/* Bottom Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-         {/* Attack Sources */}
-         <div className="bg-panel border border-border rounded-xl p-5 h-[450px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-lg text-text-primary">Attack sources</h2>
-              <div className="flex bg-background border border-border rounded-md p-1">
-                <button className="px-3 py-1 text-xs rounded-sm bg-panel border border-border text-text-primary shadow-sm">Locations</button>
-                <button className="px-3 py-1 text-xs rounded-sm text-text-secondary hover:text-text-primary transition-colors">Types</button>
+          <div className="flex-1 flex flex-col justify-center items-center py-6 bg-background/50 rounded-lg border border-border px-4">
+            <div className="flex items-center gap-3 w-full justify-center flex-wrap">
+              <div className="flex flex-col items-center gap-2 p-3 bg-panel border border-border rounded shadow-sm min-w-[110px]">
+                 <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Entity Match</span>
+                 <div className="text-sm font-bold text-text-primary">j.patel</div>
+                 <div className="text-xs text-text-secondary font-mono">203.0.113.14</div>
+              </div>
+              <ArrowRight className="w-5 h-5 text-accent-blue shrink-0" />
+              <div className="flex flex-col items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded shadow-sm min-w-[110px]">
+                 <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Pattern</span>
+                 <div className="text-sm font-bold text-orange-800 text-center">Credential<br/>Stuffing</div>
+              </div>
+              <ArrowRight className="w-5 h-5 text-accent-red shrink-0" />
+              <div className="flex flex-col items-center gap-2 p-3 bg-red-50 border border-red-200 rounded shadow-sm min-w-[110px]">
+                 <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider">Impact</span>
+                 <div className="text-sm font-bold text-red-800 text-center">Data<br/>Exfiltration</div>
               </div>
             </div>
-            <div className="flex-1 bg-background/50 rounded-lg overflow-hidden relative">
-              <ComposableMap projectionConfig={{ scale: 140 }} width={800} height={400} style={{ width: "100%", height: "100%" }}>
-                <Geographies geography={geoUrl}>
-                  {({ geographies }) =>
-                    geographies.map((geo) => (
-                      <Geography
-                        key={geo.rsmKey}
-                        geography={geo}
-                        fill="#1a1a1a"
-                        stroke="#2a2a2a"
-                        strokeWidth={0.5}
-                        style={{
-                          default: { outline: "none" },
-                          hover: { fill: "#2a2a2a", outline: "none" },
-                          pressed: { outline: "none" },
-                        }}
-                      />
-                    ))
-                  }
-                </Geographies>
-                {mapData.map(({ id, coordinates, attacks }) => (
-                  <Marker key={id} coordinates={coordinates as [number, number]}>
-                    <circle r={ attacks > 0 ? 6 : 3 } fill="#f97316" className="animate-pulse opacity-80" />
-                    <circle r={ attacks > 0 ? 12 : 0 } fill="#f97316" opacity={0.2} />
-                  </Marker>
-                ))}
-              </ComposableMap>
-              
-              {/* Overlay tooltip mockup */}
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-panel/90 backdrop-blur border border-border p-3 rounded-lg shadow-xl flex flex-col gap-2 pointer-events-none">
-                 <div className="flex justify-between items-center gap-4">
-                   <div className="flex items-center gap-2">
-                     <span>🇺🇸</span> <span className="text-sm font-medium">USA</span>
-                   </div>
-                   <div className="text-accent-green text-xs flex items-center">↗</div>
-                 </div>
-                 <div className="flex justify-between items-end gap-6 mt-1">
-                    <span className="text-xs text-text-secondary">3 attacks</span>
-                    <span className="text-sm font-bold">4%</span>
-                 </div>
-                 <div className="w-full bg-border h-1 rounded-full mt-1 overflow-hidden">
-                    <div className="bg-accent-blue h-full w-[40%]"></div>
-                 </div>
-              </div>
+            <div className="mt-6 text-xs text-text-secondary bg-panel px-4 py-2 rounded-full border border-border shadow-sm flex items-center gap-2">
+               <span className="w-1.5 h-1.5 rounded-full bg-accent-blue"></span>
+               Correlation Window: <span className="font-medium text-text-primary">3 minutes</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+         {/* Active Incidents */}
+         <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border flex justify-between items-center bg-background/30">
+              <h2 className="font-semibold text-lg text-text-primary">Active Incidents</h2>
+              <Link to="/incidents" className="text-sm font-medium text-accent-blue hover:underline">View All</Link>
+            </div>
+            <div className="divide-y divide-border">
+              {mockIncidents.map(inc => (
+                <Link key={inc.id} to={`/incidents/${inc.id}`} className="block p-4 hover:bg-background transition-colors">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-text-primary">{inc.id}</span>
+                      <SeverityBadge severity={inc.severity} />
+                    </div>
+                    <span className="text-xs font-medium text-text-tertiary bg-border px-2 py-0.5 rounded">
+                      {Math.round(inc.confidence * 100)}% Confidence
+                    </span>
+                  </div>
+                  <div className="text-sm text-text-secondary mb-3 font-medium">
+                    {getIncidentLabel(inc.template_name)}
+                  </div>
+                  <div className="flex gap-4 text-xs text-text-tertiary">
+                    <span>{inc.matched_events.length} events</span>
+                    <span>•</span>
+                    <span>{format(new Date(inc.start_time), 'MMM d, HH:mm')}</span>
+                  </div>
+                </Link>
+              ))}
             </div>
          </div>
 
-         {/* Attack Targets */}
-         <div className="bg-panel border border-border rounded-xl p-5 h-[450px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-lg text-text-primary">Attack targets</h2>
-              <div className="flex bg-background border border-border rounded-md p-1">
-                <button className="px-3 py-1 text-xs rounded-sm bg-panel border border-border text-text-primary shadow-sm">Domains</button>
-                <button className="px-3 py-1 text-xs rounded-sm text-text-secondary hover:text-text-primary transition-colors">Applications</button>
-              </div>
+         {/* Recent Activity */}
+         <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-border flex justify-between items-center bg-background/30">
+              <h2 className="font-semibold text-lg text-text-primary">Recent Activity</h2>
+              <Link to="/live" className="text-sm font-medium text-accent-blue hover:underline">Live Feed</Link>
             </div>
-            <div className="flex-1 overflow-auto pr-2">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-text-tertiary uppercase sticky top-0 bg-panel z-10">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left whitespace-nowrap">
+                <thead className="text-xs text-text-tertiary uppercase bg-background border-b border-border">
                   <tr>
-                    <th className="py-3 font-medium">Domains</th>
-                    <th className="py-3 font-medium text-right">Incidents</th>
-                    <th className="py-3 font-medium text-right">Hits</th>
-                    <th className="py-3 font-medium text-right">Trend</th>
+                    <th className="px-4 py-3 font-medium">Time</th>
+                    <th className="px-4 py-3 font-medium">Event Type</th>
+                    <th className="px-4 py-3 font-medium">Score</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {attackTargetsData.map((row, i) => (
-                    <tr key={i} className="hover:bg-background/50 transition-colors group">
-                      <td className="py-3 text-text-secondary group-hover:text-text-primary transition-colors">{row.domain}</td>
-                      <td className="py-3 text-right">
-                        {row.incidents ? (
-                          <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] rounded-full border border-accent-red text-accent-red bg-accent-red/10">
-                            {row.incidents}
-                          </span>
-                        ) : (
-                          <span className="text-text-tertiary">--</span>
-                        )}
+                  {[...mockEvents].reverse().slice(0, 6).map(ev => (
+                    <tr key={ev.id} className="hover:bg-background transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-text-secondary">{format(new Date(ev.timestamp), 'HH:mm:ss')}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-border text-text-secondary uppercase tracking-wider">
+                          {ev.event_type.replace(/_/g, ' ')}
+                        </span>
                       </td>
-                      <td className="py-3 text-right text-text-primary">{row.hits}</td>
-                      <td className={`py-3 text-right ${row.trendColor === 'red' ? 'text-accent-red' : 'text-accent-green'}`}>
-                        {row.trend}
+                      <td className="px-4 py-3">
+                         <span className={`font-mono text-xs font-medium ${ev.anomaly_score > 0.8 ? 'text-accent-red' : ev.anomaly_score > 0.5 ? 'text-accent-orange' : 'text-text-secondary'}`}>
+                           {ev.anomaly_score.toFixed(2)}
+                         </span>
                       </td>
                     </tr>
                   ))}
@@ -178,33 +184,33 @@ const Dashboard = () => {
   );
 };
 
-const KPICard = ({ title, value, change, trend, color }: { title: string, value: string, change: string, trend: string, color: string }) => {
+const MetricCard = ({ title, value, icon, isAlert }: { title: string, value: number, icon: React.ReactNode, isAlert?: boolean }) => {
   return (
-    <div className="flex items-center justify-between p-3.5 hover:bg-background/50 rounded-lg transition-colors cursor-pointer group border border-transparent hover:border-border">
-      <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-background border border-border`}>
-          <span className={`w-3 h-3 rounded-full ${
-            color === 'red' ? 'bg-accent-red/20 border border-accent-red' :
-            color === 'green' ? 'bg-accent-green/20 border border-accent-green' :
-            color === 'orange' ? 'bg-accent-orange/20 border border-accent-orange' :
-            'bg-accent-blue/20 border border-accent-blue'
-          }`}></span>
-        </div>
-        <div>
-          <div className="flex items-end gap-2">
-            <span className="text-xl font-bold text-text-primary">{value}</span>
-            {change && (
-              <span className={`text-xs mb-1 font-medium ${trend === 'down' ? 'text-text-secondary' : color === 'red' ? 'text-accent-red' : 'text-text-secondary'}`}>
-                {change} {trend === 'up' ? '↑' : '↓'}
-              </span>
-            )}
-          </div>
-          <div className="text-sm text-text-secondary">{title}</div>
+    <div className={`bg-panel border ${isAlert ? 'border-accent-red/30' : 'border-border'} rounded-xl p-5 shadow-sm`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-text-secondary">{title}</h3>
+        <div className={`p-2 rounded-lg ${isAlert ? 'bg-accent-red/10' : 'bg-background'}`}>
+          {icon}
         </div>
       </div>
-      <div className="text-text-tertiary group-hover:text-text-primary transition-colors">→</div>
+      <div className="text-3xl font-bold text-text-primary">{value}</div>
     </div>
   );
-}
+};
+
+const SeverityBadge = ({ severity }: { severity: string }) => {
+  const colors = {
+    Critical: 'bg-red-50 text-red-700 border-red-200',
+    High: 'bg-orange-50 text-orange-700 border-orange-200',
+    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
+    Low: 'bg-blue-50 text-blue-700 border-blue-200',
+  }[severity] || 'bg-slate-50 text-slate-700 border-slate-200';
+  
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${colors}`}>
+      {severity}
+    </span>
+  );
+};
 
 export default Dashboard;

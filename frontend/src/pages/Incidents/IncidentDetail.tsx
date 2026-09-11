@@ -1,185 +1,297 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ShieldAlert, AlertTriangle, User, Lock, Database, CheckCircle, ChevronRight, Activity } from 'lucide-react';
-import { mockIncidentDetails } from '../../data/uiMockData';
+import { AlertTriangle, Lock, Database, CheckCircle, ChevronRight, Activity, Server, FileText, Users, Network } from 'lucide-react';
+import { useSimulation } from '../../context/SimulationContext';
+import { format } from 'date-fns';
 
-const getIconForType = (iconType: string) => {
-  switch (iconType) {
-    case 'shield-alert': return <ShieldAlert className="w-4 h-4 text-accent-red" />;
-    case 'user': return <User className="w-4 h-4 text-accent-blue" />;
-    case 'lock': return <Lock className="w-4 h-4 text-accent-orange" />;
-    case 'database': return <Database className="w-4 h-4 text-accent-red" />;
-    default: return <Activity className="w-4 h-4 text-text-secondary" />;
-  }
+// Maps a template_name to a human-readable attack pattern label
+const getIncidentLabel = (templateName: string): string => {
+  const labels: Record<string, string> = {
+    credential_compromise_exfiltration: 'Credential Stuffing → Data Exfiltration',
+    port_scan_detected: 'Port Scan / Reconnaissance',
+    brute_force_attack: 'Brute Force Attack',
+  };
+  return labels[templateName] ?? templateName.replace(/_/g, ' ').toUpperCase();
+};
+
+const getIconForType = (eventType: string) => {
+  if (eventType.includes('auth_login_failure')) return <Lock className="w-3.5 h-3.5 text-accent-orange" />;
+  if (eventType.includes('auth_login_success')) return <Lock className="w-3.5 h-3.5 text-accent-green" />;
+  if (eventType.includes('db')) return <Database className="w-3.5 h-3.5 text-accent-red" />;
+  if (eventType.includes('file')) return <FileText className="w-3.5 h-3.5 text-text-secondary" />;
+  if (eventType.includes('data_exfil')) return <Activity className="w-3.5 h-3.5 text-accent-red" />;
+  if (eventType.includes('port')) return <Network className="w-3.5 h-3.5 text-accent-blue" />;
+  if (eventType.includes('brute')) return <Lock className="w-3.5 h-3.5 text-accent-red" />;
+  return <Activity className="w-3.5 h-3.5 text-text-secondary" />;
+};
+
+const getEventLabel = (eventType: string): string => {
+  const labels: Record<string, string> = {
+    auth_login_failure: 'Auth Failure',
+    auth_login_success: 'Auth Success',
+    db_query: 'DB Query',
+    file_access: 'File Access',
+    data_exfiltration: 'Data Exfiltration',
+    port_scan: 'Port Scan',
+    brute_force_attempt: 'Brute Force',
+    api_call: 'API Call',
+  };
+  return labels[eventType] ?? eventType.replace(/_/g, ' ');
+};
+
+const getChainNodeStyle = (eventType: string): string => {
+  if (eventType === 'data_exfiltration') return 'border-red-300 bg-red-50';
+  if (eventType === 'auth_login_failure' || eventType === 'brute_force_attempt') return 'border-orange-200 bg-orange-50';
+  if (eventType === 'auth_login_success') return 'border-green-200 bg-green-50';
+  if (eventType === 'db_query') return 'border-red-200 bg-red-50/50';
+  return 'border-slate-200 bg-white';
 };
 
 const IncidentDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const incidentData = id ? (mockIncidentDetails as Record<string, any>)[id] : null;
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const { events: mockEvents, incidents: mockIncidents } = useSimulation();
+  const incidentData = mockIncidents.find(inc => inc.id === id);
 
   if (!incidentData) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
-        <AlertTriangle className="w-12 h-12 mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Incident not found</h2>
+      <div className="flex flex-col items-center justify-center h-full py-20 text-text-tertiary">
+        <AlertTriangle className="w-12 h-12 mb-4 opacity-50" />
+        <h2 className="text-xl font-semibold text-text-primary mb-2">Incident not found</h2>
         <Link to="/incidents" className="text-accent-blue hover:underline">Return to incidents</Link>
       </div>
     );
   }
 
-  const { summary, timeline, evidence, correlationExplanation, recommendedAction } = incidentData;
+  const { correlationExplanation, recommended_action } = incidentData;
+  const matchedEventsData = incidentData.matched_events
+    .map(eventId => mockEvents.find(e => e.id === eventId))
+    .filter((e): e is typeof mockEvents[0] => e !== undefined);
+
+  const incidentLabel = getIncidentLabel(incidentData.template_name);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-4 text-sm mb-2 text-text-secondary">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-text-secondary">
         <Link to="/incidents" className="hover:text-text-primary transition-colors">Incidents</Link>
         <ChevronRight className="w-4 h-4" />
-        <span className="text-text-primary">{id}</span>
+        <span className="text-text-primary font-medium">{id}</span>
       </div>
       
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{summary.attackType}</h1>
-        <div className="flex gap-3">
-          <button className="bg-panel border border-border px-4 py-2 rounded-md text-sm hover:border-text-tertiary transition-colors">
-             Export Report
-          </button>
-          <button className="bg-accent-blue text-white px-4 py-2 rounded-md text-sm hover:bg-accent-blue/90 transition-colors shadow-sm font-medium">
-             Take Action
-          </button>
+      {/* Header */}
+      <div className="bg-panel border border-border rounded-xl p-6 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="font-mono text-text-secondary text-sm">{incidentData.id}</span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                incidentData.severity === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' :
+                incidentData.severity === 'High' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                'bg-blue-50 text-blue-700 border-blue-200'
+              }`}>
+                {incidentData.severity}
+              </span>
+              <span className="text-accent-orange text-xs flex items-center gap-1.5 font-medium bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-orange"></span> Open
+              </span>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary">{incidentLabel}</h1>
+            <div className="flex items-center gap-6 mt-1 text-sm text-text-secondary flex-wrap">
+              <div>
+                <span className="text-text-tertiary">Time range: </span>
+                <span className="font-medium text-text-primary">
+                  {format(new Date(incidentData.start_time), 'HH:mm:ss')} → {format(new Date(incidentData.end_time), 'HH:mm:ss')}
+                </span>
+              </div>
+              <div>
+                <span className="text-text-tertiary">Confidence: </span>
+                <span className="font-medium text-text-primary">{Math.round(incidentData.confidence * 100)}%</span>
+              </div>
+              <div>
+                <span className="text-text-tertiary">Events: </span>
+                <span className="font-medium text-text-primary">{matchedEventsData.length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Attack Chain — single continuous horizontal flow, wraps on narrow screens */}
+      <div className="bg-panel border border-border rounded-xl p-6 shadow-sm">
+        <h2 className="font-semibold text-lg text-text-primary mb-5">Reconstructed Attack Chain</h2>
+        <div className="bg-background/60 rounded-lg border border-border p-6 overflow-x-auto">
+          <div className="flex items-start flex-wrap gap-0 min-w-0">
+            {matchedEventsData.map((ev, idx) => (
+              <div key={ev.id} className="flex items-center">
+                {/* Node */}
+                <div 
+                  onClick={() => setSelectedEventId(ev.id === selectedEventId ? null : (ev.id as string))}
+                  className={`flex flex-col items-center border rounded-lg p-3 w-[110px] shrink-0 shadow-sm cursor-pointer transition-all ${getChainNodeStyle(ev.event_type)} ${selectedEventId === ev.id ? 'ring-2 ring-accent-blue ring-offset-2 scale-105 bg-accent-blue/5' : 'hover:scale-105'}`}
+                >
+                  <span className="mb-2">{getIconForType(ev.event_type)}</span>
+                  <span className="text-[11px] font-bold text-text-primary text-center leading-tight">
+                    {getEventLabel(ev.event_type)}
+                  </span>
+                  <span className="text-[10px] text-text-tertiary font-mono mt-1">
+                    {format(new Date(ev.timestamp), 'HH:mm:ss')}
+                  </span>
+                  <span className={`text-[10px] font-mono mt-1 ${ev.anomaly_score >= 0.8 ? 'text-accent-red' : 'text-text-tertiary'}`}>
+                    {ev.anomaly_score.toFixed(2)}
+                  </span>
+                </div>
+                {/* Arrow between nodes */}
+                {idx < matchedEventsData.length - 1 && (
+                  <ChevronRight className="w-5 h-5 text-text-tertiary shrink-0 mx-1" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Summary & Correlation */}
-        <div className="space-y-6">
-          <div className="bg-panel border border-border rounded-xl p-5">
-            <h2 className="font-semibold text-lg text-text-primary mb-4 border-b border-border pb-2">Incident Summary</h2>
-            <div className="space-y-4">
-               <div className="flex justify-between items-center">
-                 <span className="text-text-secondary text-sm">Severity</span>
-                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-accent-red/10 text-accent-red border-accent-red/20`}>
-                    <ShieldAlert className="w-3 h-3" />
-                    {summary.severity}
-                 </span>
-               </div>
-               <div className="flex justify-between items-center">
-                 <span className="text-text-secondary text-sm">Risk Score</span>
-                 <span className="font-bold text-accent-red text-lg">{summary.riskScore}/100</span>
-               </div>
-               <div className="flex justify-between items-center">
-                 <span className="text-text-secondary text-sm">Status</span>
-                 <span className="text-accent-orange text-sm flex items-center gap-1.5 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent-orange"></span> {summary.status}
-                 </span>
-               </div>
-               <div className="flex justify-between items-center">
-                 <span className="text-text-secondary text-sm">Detection Time</span>
-                 <span className="text-text-primary text-sm font-mono">{new Date(summary.detectionTime).toLocaleString()}</span>
-               </div>
-               <div className="pt-2 border-t border-border">
-                 <span className="text-text-secondary text-sm block mb-2">Affected Entities</span>
-                 <div className="flex flex-wrap gap-2">
-                   {summary.affectedEntities.map((entity: string) => (
-                     <span key={entity} className="bg-background border border-border px-2 py-1 rounded text-xs text-text-primary">{entity}</span>
-                   ))}
-                 </div>
-               </div>
-            </div>
+        {/* Evidence Timeline */}
+        <div className="lg:col-span-2 bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <div className="p-5 border-b border-border bg-background/30">
+            <h2 className="font-semibold text-lg text-text-primary">Evidence Timeline</h2>
           </div>
-
-          <div className="bg-panel border border-border rounded-xl p-5 border-l-4 border-l-accent-blue">
-            <h2 className="font-semibold text-lg text-text-primary mb-4 flex items-center gap-2">
-               <Activity className="w-5 h-5 text-accent-blue" />
-               Correlation AI
-            </h2>
-            <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-               {correlationExplanation.reason}
-            </p>
-            <div className="space-y-2 text-sm bg-background/50 p-3 rounded border border-border">
-               <div className="flex justify-between"><span className="text-text-tertiary">Time Window:</span> <span className="text-text-primary">{correlationExplanation.timeWindow}</span></div>
-               <div className="flex justify-between"><span className="text-text-tertiary">Shared Entities:</span> <span className="text-text-primary">{correlationExplanation.sharedEntities.join(', ')}</span></div>
-               <div className="flex justify-between"><span className="text-text-tertiary">Pattern Matched:</span> <span className="text-accent-orange font-medium">{correlationExplanation.patternMatched}</span></div>
-               <div className="flex justify-between mt-2 pt-2 border-t border-border"><span className="text-text-tertiary">Severity Boost:</span> <span className="text-accent-red font-medium">{correlationExplanation.severityBoost}</span></div>
-            </div>
-          </div>
-
-          <div className="bg-panel border border-border rounded-xl p-5 border-l-4 border-l-accent-green">
-            <h2 className="font-semibold text-lg text-text-primary mb-2 flex items-center gap-2">
-               <CheckCircle className="w-5 h-5 text-accent-green" />
-               Recommended Action
-            </h2>
-            <p className="text-sm text-text-primary leading-relaxed">
-               {recommendedAction}
-            </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-xs text-text-tertiary uppercase bg-background border-b border-border">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Time</th>
+                  <th className="px-5 py-3 font-medium">Event</th>
+                  <th className="px-5 py-3 font-medium">User / IP</th>
+                  <th className="px-5 py-3 font-medium text-right">Anomaly</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {matchedEventsData.map((ev) => {
+                  const isSelected = selectedEventId === ev.id;
+                  return (
+                  <tr 
+                    key={ev.id} 
+                    onClick={() => setSelectedEventId(ev.id === selectedEventId ? null : (ev.id as string))}
+                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-accent-blue/10 border-l-2 border-accent-blue' : 'hover:bg-background/80 border-l-2 border-transparent'}`}
+                  >
+                    <td className="px-5 py-4 font-mono text-xs text-text-secondary">
+                      {format(new Date(ev.timestamp), 'HH:mm:ss')}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                          {getIconForType(ev.event_type)}
+                          {ev.event_type.replace(/_/g, ' ')}
+                        </span>
+                        {ev.attack_label && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-600 border border-red-100">
+                            {ev.attack_label}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="font-medium text-text-primary">{ev.user}</div>
+                      <div className="text-xs font-mono text-text-tertiary">{ev.ip}</div>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span className={`font-mono text-xs font-medium px-2 py-1 rounded border ${
+                        ev.anomaly_score >= 0.8 ? 'text-accent-red border-red-200 bg-red-50' : 
+                        ev.anomaly_score >= 0.5 ? 'text-accent-orange border-orange-200 bg-orange-50' : 
+                        'text-text-secondary border-slate-200 bg-slate-50'
+                      }`}>
+                        {ev.anomaly_score.toFixed(2)}
+                      </span>
+                    </td>
+                  </tr>
+                )})}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Right Column: Timeline & Evidence */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-panel border border-border rounded-xl p-5">
-            <h2 className="font-semibold text-lg text-text-primary mb-6 border-b border-border pb-2">Attack Timeline</h2>
-            <div className="relative pl-6 space-y-8 before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
-               {timeline.map((item: any, i: number) => (
-                 <div key={item.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                   <div className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-panel bg-background shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm relative z-10">
-                      {getIconForType(item.icon)}
-                   </div>
-                   <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] p-3 rounded border border-border bg-background/50 hover:bg-background transition-colors shadow-sm">
-                      <div className="flex items-center justify-between mb-1">
-                         <span className="font-medium text-sm text-text-primary">{item.type}</span>
-                         <span className="text-xs font-mono text-text-tertiary">{item.time}</span>
-                      </div>
-                   </div>
-                 </div>
-               ))}
+        {/* Right Column */}
+        <div className="space-y-6">
+          
+          {/* Correlation Engine */}
+          {correlationExplanation && (
+            <div className="bg-panel border border-border rounded-xl p-5 shadow-sm border-t-4 border-t-accent-blue">
+              <h2 className="font-semibold text-base text-text-primary mb-1 flex items-center gap-2">
+                <Server className="w-4 h-4 text-accent-blue" />
+                Correlation Engine
+              </h2>
+              <p className="text-xs text-text-tertiary mb-4 uppercase tracking-wider font-semibold">
+                Why these events were linked
+              </p>
+
+              {/* Entity Match */}
+              <div className="mb-4">
+                <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-text-tertiary" /> Entity Match
+                </h3>
+                <ul className="space-y-1.5">
+                  {correlationExplanation.sharedEntities.map(entity => (
+                    <li key={entity} className="flex items-center gap-2 text-sm text-text-secondary">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent-blue shrink-0"></span>
+                      {entity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Temporal Proximity */}
+              <div className="mb-4 pt-3 border-t border-border">
+                <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-text-tertiary" /> Temporal Proximity
+                </h3>
+                <div className="text-sm text-text-secondary flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-blue shrink-0"></span>
+                  {correlationExplanation.timeWindow} correlation window
+                </div>
+              </div>
+
+              {/* Pattern Match */}
+              <div className="mb-4 pt-3 border-t border-border">
+                <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Network className="w-3.5 h-3.5 text-text-tertiary" /> Pattern Match
+                </h3>
+                <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
+                  {correlationExplanation.patternMatched}
+                </span>
+              </div>
+
+              {/* Risk Contribution */}
+              <div className="pt-3 border-t border-border">
+                <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-text-tertiary" /> Risk Contribution
+                </h3>
+                <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                  {correlationExplanation.severityBoost}
+                </span>
+              </div>
             </div>
+          )}
+
+          {/* Analyst Recommendations */}
+          <div className="bg-panel border border-border rounded-xl p-5 shadow-sm border-t-4 border-t-accent-green">
+            <h2 className="font-semibold text-base text-text-primary mb-1 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-accent-green" />
+              Analyst Recommendations
+            </h2>
+            <p className="text-xs text-text-tertiary mb-4 uppercase tracking-wider font-semibold">
+              Suggested response actions
+            </p>
+            <ul className="space-y-3">
+              {recommended_action.map((action, i) => (
+                <li key={i} className="flex gap-3 text-sm text-text-primary leading-relaxed">
+                  <span className="mt-0.5 text-accent-green font-bold shrink-0">•</span>
+                  <span>{action}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <div className="bg-panel border border-border rounded-xl p-0 overflow-hidden">
-             <div className="p-5 border-b border-border">
-               <h2 className="font-semibold text-lg text-text-primary">Evidence Chain</h2>
-             </div>
-             <div className="overflow-x-auto">
-               <table className="w-full text-sm text-left whitespace-nowrap">
-                 <thead className="text-xs text-text-tertiary uppercase bg-background/50 border-b border-border">
-                   <tr>
-                     <th className="px-5 py-3 font-medium">Time</th>
-                     <th className="px-5 py-3 font-medium">Event Type</th>
-                     <th className="px-5 py-3 font-medium">Resource</th>
-                     <th className="px-5 py-3 font-medium">User/IP</th>
-                     <th className="px-5 py-3 font-medium">Classification</th>
-                     <th className="px-5 py-3 font-medium text-right">Anomaly</th>
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-border">
-                   {evidence.map((ev: any, i: number) => (
-                     <tr key={i} className="hover:bg-background/50 transition-colors">
-                       <td className="px-5 py-3 font-mono text-xs text-text-secondary">{ev.timestamp}</td>
-                       <td className="px-5 py-3 font-medium text-text-primary">{ev.eventType}</td>
-                       <td className="px-5 py-3 text-text-secondary truncate max-w-[150px]" title={ev.resource}>{ev.resource}</td>
-                       <td className="px-5 py-3">
-                         <div className="text-text-primary">{ev.user}</div>
-                         <div className="text-xs font-mono text-text-tertiary">{ev.ip}</div>
-                       </td>
-                       <td className="px-5 py-3">
-                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${
-                           ev.classification === 'critical' ? 'bg-accent-red/20 text-accent-red' :
-                           ev.classification === 'attack' ? 'bg-accent-orange/20 text-accent-orange' :
-                           'bg-accent-blue/20 text-accent-blue'
-                         }`}>
-                           {ev.classification}
-                         </span>
-                       </td>
-                       <td className="px-5 py-3 text-right">
-                          <span className={`font-mono text-xs ${ev.anomalyScore > 0.9 ? 'text-accent-red' : 'text-accent-orange'}`}>
-                            {ev.anomalyScore.toFixed(2)}
-                          </span>
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
-             </div>
-          </div>
         </div>
       </div>
     </div>

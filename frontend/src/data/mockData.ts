@@ -8,6 +8,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.85,
     severity: 0.31,
   },
   {
@@ -17,6 +18,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.88,
     severity: 0.52,
   },
   {
@@ -26,6 +28,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.91,
     severity: 0.68,
   },
   {
@@ -35,6 +38,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.82,
     severity: 0.81,
     attack_label: "credential_stuffing",
   },
@@ -45,6 +49,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.40,
     severity: 0.45,
     metadata: { endpoint: "/api/users/list", method: "GET" },
   },
@@ -55,6 +60,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.95,
     severity: 0.77,
     metadata: { resource: "customer_records", sensitivity: "high" },
   },
@@ -65,6 +71,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.75,
     severity: 0.72,
     metadata: { file: "sensitive_data.csv", action: "read" },
   },
@@ -75,6 +82,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "j.patel",
     ip: "203.0.113.14",
     session: "sess-a1",
+    anomaly_score: 0.99,
     severity: 0.94,
     metadata: { bytes: 48200000, destination: "external" },
     attack_label: "exfiltration",
@@ -86,6 +94,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "s.kumar",
     ip: "198.51.100.42",
     session: "sess-b2",
+    anomaly_score: 0.05,
     severity: 0.12,
   },
   {
@@ -95,6 +104,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "s.kumar",
     ip: "198.51.100.42",
     session: "sess-b2",
+    anomaly_score: 0.10,
     severity: 0.08,
     metadata: { endpoint: "/api/dashboard", method: "GET" },
   },
@@ -105,6 +115,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "unknown",
     ip: "192.0.2.88",
     session: "sess-scan1",
+    anomaly_score: 0.92,
     severity: 0.73,
     metadata: { ports_scanned: 1024, duration: "45s" },
     attack_label: "reconnaissance",
@@ -116,6 +127,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "unknown",
     ip: "192.0.2.88",
     session: "sess-scan1",
+    anomaly_score: 0.96,
     severity: 0.82,
     metadata: { ports_scanned: 2048, duration: "90s" },
   },
@@ -126,6 +138,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "admin",
     ip: "203.0.113.99",
     session: "sess-c3",
+    anomaly_score: 0.70,
     severity: 0.42,
   },
   {
@@ -135,6 +148,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "root",
     ip: "203.0.113.99",
     session: "sess-c3",
+    anomaly_score: 0.75,
     severity: 0.48,
   },
   {
@@ -144,6 +158,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "administrator",
     ip: "203.0.113.99",
     session: "sess-c3",
+    anomaly_score: 0.80,
     severity: 0.55,
   },
   {
@@ -153,6 +168,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "admin",
     ip: "203.0.113.99",
     session: "sess-c3",
+    anomaly_score: 0.98,
     severity: 0.88,
     metadata: { attempts: 47, duration: "6s" },
     attack_label: "brute_force",
@@ -164,6 +180,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "m.johnson",
     ip: "198.51.100.73",
     session: "sess-d4",
+    anomaly_score: 0.02,
     severity: 0.15,
   },
   {
@@ -173,6 +190,7 @@ export const mockEvents: NexoraEvent[] = [
     user: "m.johnson",
     ip: "198.51.100.73",
     session: "sess-d4",
+    anomaly_score: 0.04,
     severity: 0.1,
     metadata: { file: "report_q3.pdf", action: "read" },
   },
@@ -180,6 +198,16 @@ export const mockEvents: NexoraEvent[] = [
 
 export const mockIncidents: Incident[] = [
   {
+    id: "INC-1024",
+    severity: "Critical",
+    confidence: 0.95,
+    recommended_action: [
+      "Immediately disable user account and force password reset",
+      "Review all recent access from this IP address",
+      "Audit data access logs for potential data exfiltration",
+      "Notify security team and affected data owners",
+      "Check for lateral movement from compromised account",
+    ],
     template_name: "credential_compromise_exfiltration",
     description:
       "Burst of failed logins followed by successful login, privileged database access, and large data transfer. Classic credential stuffing → exfiltration pattern.",
@@ -195,8 +223,25 @@ export const mockIncidents: Incident[] = [
     entity: { user: "j.patel", ip: "203.0.113.14" },
     start_time: "2026-09-11T09:12:01Z",
     end_time: "2026-09-11T09:15:30Z",
+    correlationExplanation: {
+      reason: 'Events were correlated because they share the same user and IP within a tight time window.',
+      sharedEntities: ['User: j.patel', 'IP: 203.0.113.14'],
+      timeWindow: '3 minutes',
+      patternMatched: 'Credential Stuffing → Data Exfiltration',
+      aggregateRiskScore: 95,
+      severityBoost: '+20 points due to matching known attack chain pattern.'
+    }
   },
   {
+    id: "INC-1022",
+    severity: "High",
+    confidence: 0.88,
+    recommended_action: [
+      "Block scanning IP at network perimeter",
+      "Review firewall rules for unnecessary open ports",
+      "Check IDS/IPS logs for follow-up attacks",
+      "Document and report reconnaissance activity",
+    ],
     template_name: "port_scan_detected",
     description:
       "Network port scanning activity detected from external IP. Potential reconnaissance for targeted attack.",
@@ -204,8 +249,25 @@ export const mockIncidents: Incident[] = [
     entity: { ip: "192.0.2.88" },
     start_time: "2026-09-11T09:25:00Z",
     end_time: "2026-09-11T09:25:45Z",
+    correlationExplanation: {
+      reason: 'Events were correlated because they share the same source IP across multiple ports.',
+      sharedEntities: ['IP: 192.0.2.88'],
+      timeWindow: '45 seconds',
+      patternMatched: 'Port Scan / Reconnaissance',
+      aggregateRiskScore: 82,
+      severityBoost: '+10 points for sustained scanning duration.'
+    }
   },
   {
+    id: "INC-1021",
+    severity: "High",
+    confidence: 0.92,
+    recommended_action: [
+      "Block source IP address at firewall level",
+      "Enable account lockout after failed login attempts",
+      "Force MFA for affected accounts",
+      "Monitor for distributed attack patterns",
+    ],
     template_name: "brute_force_attack",
     description:
       "Multiple failed login attempts to privileged accounts within short time window. Automated credential attack detected.",
@@ -213,5 +275,13 @@ export const mockIncidents: Incident[] = [
     entity: { ip: "203.0.113.99" },
     start_time: "2026-09-11T09:30:00Z",
     end_time: "2026-09-11T09:30:06Z",
+    correlationExplanation: {
+      reason: 'Events were correlated due to rapid successive failed logins from a single IP targeting multiple accounts.',
+      sharedEntities: ['IP: 203.0.113.99'],
+      timeWindow: '6 seconds',
+      patternMatched: 'Brute Force Attack',
+      aggregateRiskScore: 88,
+      severityBoost: '+15 points for targeting privileged accounts.'
+    }
   },
 ];
