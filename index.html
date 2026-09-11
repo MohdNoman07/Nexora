@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nexora — Incident Reconstruction Console</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="aurora">
+  <span class="blob b1"></span>
+  <span class="blob b2"></span>
+  <span class="blob b3"></span>
+  <div class="grid-veil"></div>
+  <div class="noise"></div>
+</div>
+
+<!-- ================= NAVBAR ================= -->
+<header class="navwrap">
+  <nav class="glass nav" id="nav">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22">
+          <defs><linearGradient id="mg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8FD3FF"/><stop offset="1" stop-color="#5E7BE8"/>
+          </linearGradient></defs>
+          <path d="M16 2.5 27 8v10.2c0 6.2-4.6 10.2-11 11.3C9.6 28.4 5 24.4 5 18.2V8z" fill="none" stroke="url(#mg)" stroke-width="2"/>
+          <path d="M11 20.5V11.2l10 9.4V11.2" fill="none" stroke="url(#mg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brandtext">Nexora</span>
+      <span class="brandsub">SOC</span>
+    </div>
+
+    <div class="navlinks" id="navlinks">
+      <a class="pill active" href="#surface">Surface</a>
+      <a class="pill" href="#stream">Stream</a>
+      <a class="pill" href="#incident">Incident</a>
+      <a class="pill" href="#bench">Benchmark</a>
+      <span class="pill-glow" id="pillGlow"></span>
+    </div>
+
+    <div class="navright">
+      <div class="livechip" title="WebSocket stream">
+        <span class="dot"></span><span id="clock">--:--:--</span>
+      </div>
+      <button class="iconbtn" id="pauseBtn" title="Pause stream" aria-label="Pause stream">
+        <svg viewBox="0 0 24 24" width="16" height="16"><rect x="7" y="6" width="3.4" height="12" rx="1.4"/><rect x="13.6" y="6" width="3.4" height="12" rx="1.4"/></svg>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- ================= HERO / KPIs ================= -->
+<section class="hero" id="surface">
+  <div class="herohead">
+    <p class="eyebrow"><span class="pulsedot"></span> Correlation engine online · simulated org <b>ACME-NET</b></p>
+    <h1>Alerts are noise.<br><em>Incidents</em> are the story.</h1>
+    <p class="lede">Nexora links flagged events by shared user, host and session inside a sliding window, then matches them against attack-chain templates — so a burst of anomalies collapses into one explainable incident with its evidence chain intact.</p>
+  </div>
+
+  <div class="kpis">
+    <article class="glass kpi" data-tone="blue">
+      <span class="kpilabel">Events / sec</span>
+      <span class="kpival" id="kpiEps">0</span>
+      <svg class="spark" viewBox="0 0 120 34" preserveAspectRatio="none"><path id="sparkPath" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </article>
+    <article class="glass kpi" data-tone="amber">
+      <span class="kpilabel">Anomalies flagged</span>
+      <span class="kpival" id="kpiAnom">0</span>
+      <span class="kpifoot">last 60s window</span>
+    </article>
+    <article class="glass kpi" data-tone="red">
+      <span class="kpilabel">Open incidents</span>
+      <span class="kpival" id="kpiInc">0</span>
+      <span class="kpifoot" id="kpiIncFoot">no active chains</span>
+    </article>
+    <article class="glass kpi" data-tone="green">
+      <span class="kpilabel">Correlation rate</span>
+      <span class="kpival" id="kpiCorr">—</span>
+      <span class="kpifoot">chains reconstructed as one</span>
+    </article>
+  </div>
+</section>
+
+<!-- ================= GRAPH + STREAM ================= -->
+<section class="deck" id="stream">
+
+  <div class="glass panel graphpanel">
+    <header class="phead">
+      <div>
+        <h2>Entity surface</h2>
+        <p>Live entity-linked event graph · organization at centre</p>
+      </div>
+      <div class="legend">
+        <span><i class="ln green"></i>benign flow</span>
+        <span><i class="ln red"></i>flagged / attack path</span>
+      </div>
+    </header>
+
+    <div class="canvaswrap" id="canvasWrap">
+      <canvas id="graph"></canvas>
+      <div class="tip glass" id="tip" hidden></div>
+      <div class="vignette"></div>
+    </div>
+
+    <footer class="injector">
+      <span class="injlabel">Inject attack</span>
+      <div class="injbtns">
+        <button class="gbtn" data-attack="bruteforce"><span>Brute force</span></button>
+        <button class="gbtn" data-attack="portscan"><span>Port scan</span></button>
+        <button class="gbtn" data-attack="exfil"><span>Data exfiltration</span></button>
+        <button class="gbtn ghost" id="resetBtn"><span>Reset</span></button>
+      </div>
+    </footer>
+  </div>
+
+  <div class="sidecol">
+    <div class="glass panel entitypanel" id="entityPanel">
+      <header class="phead tight">
+        <div><h3 id="entName">ACME-NET</h3><p id="entMeta">organization root · 9 linked entities</p></div>
+        <span class="badge" id="entBadge">nominal</span>
+      </header>
+      <div class="meters">
+        <div class="meter"><span>Risk score</span><div class="bar"><i id="mRisk" style="width:8%"></i></div><b id="mRiskV">0.08</b></div>
+        <div class="meter"><span>Deviation from baseline</span><div class="bar"><i id="mDev" style="width:12%"></i></div><b id="mDevV">0.12σ</b></div>
+      </div>
+      <p class="hintline">Click any node on the surface to pin its evidence.</p>
+    </div>
+
+    <div class="glass panel streampanel">
+      <header class="phead tight">
+        <div><h3>Live activity</h3><p>WebSocket · unified event schema</p></div>
+        <span class="cnt" id="evCount">0</span>
+      </header>
+      <ul class="feed" id="feed"></ul>
+      <div class="feedfade"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= INCIDENT RECONSTRUCTION ================= -->
+<section class="glass panel incident" id="incident">
+  <header class="phead">
+    <div>
+      <h2>Incident reconstruction</h2>
+      <p>Flagged events stitched into one chain by shared entity + template match</p>
+    </div>
+    <div class="sev" id="sevWrap">
+      <svg viewBox="0 0 72 72" class="ring"><circle cx="36" cy="36" r="30" class="track"/><circle cx="36" cy="36" r="30" class="val" id="sevRing"/></svg>
+      <div class="sevtxt"><b id="sevNum">—</b><span>severity</span></div>
+    </div>
+  </header>
+
+  <div class="chain" id="chain">
+    <div class="emptychain">
+      <span class="eicon">◇</span>
+      <p>No active incident. Inject an attack on the entity surface to watch a chain assemble stage by stage.</p>
+    </div>
+  </div>
+
+  <div class="chainfoot" id="chainFoot" hidden>
+    <div class="evidence">
+      <h4>Evidence chain</h4>
+      <ul id="evidenceList"></ul>
+    </div>
+    <div class="action glass inner">
+      <h4>Recommended response</h4>
+      <p id="actionText">—</p>
+      <div class="actbtns">
+        <button class="gbtn solid"><span>Contain entity</span></button>
+        <button class="gbtn ghost"><span>Mark false positive</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BENCHMARK ================= -->
+<section class="bench" id="bench">
+  <div class="benchhead">
+    <h2>Validated on real labelled traffic</h2>
+    <p>Detection and classification are trained and scored on <b>CICIDS2017</b>, not on the simulator that drives this demo. Sample figures shown for the console mock.</p>
+  </div>
+
+  <div class="benchgrid">
+    <article class="glass panel classcard" data-k="0">
+      <h3>Brute force</h3>
+      <div class="prf"><span>Precision</span><div class="bar"><i data-w="96"></i></div><b>0.96</b></div>
+      <div class="prf"><span>Recall</span><div class="bar"><i data-w="93"></i></div><b>0.93</b></div>
+      <div class="prf"><span>F1</span><div class="bar"><i data-w="94"></i></div><b>0.94</b></div>
+    </article>
+    <article class="glass panel classcard" data-k="1">
+      <h3>Port scan</h3>
+      <div class="prf"><span>Precision</span><div class="bar"><i data-w="98"></i></div><b>0.98</b></div>
+      <div class="prf"><span>Recall</span><div class="bar"><i data-w="97"></i></div><b>0.97</b></div>
+      <div class="prf"><span>F1</span><div class="bar"><i data-w="97"></i></div><b>0.97</b></div>
+    </article>
+    <article class="glass panel classcard" data-k="2">
+      <h3>Exfiltration</h3>
+      <div class="prf"><span>Precision</span><div class="bar"><i data-w="88"></i></div><b>0.88</b></div>
+      <div class="prf"><span>Recall</span><div class="bar"><i data-w="81"></i></div><b>0.81</b></div>
+      <div class="prf"><span>F1</span><div class="bar"><i data-w="84"></i></div><b>0.84</b></div>
+    </article>
+    <article class="glass panel statcard">
+      <h3>Console-level metrics</h3>
+      <ul class="statlist">
+        <li><span>False positive rate<small>normal simulated traffic</small></span><b>1.9%</b></li>
+        <li><span>Detection latency<small>event → dashboard alert</small></span><b>412 ms</b></li>
+        <li><span>Correlation accuracy<small>multi-step chains as one incident</small></span><b>87%</b></li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<footer class="foot">
+  <span>Nexora · AI-powered security monitoring &amp; incident reconstruction</span>
+  <span class="sep">·</span>
+  <span>Hybrid graph-linking + attack-chain pattern matching</span>
+</footer>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
