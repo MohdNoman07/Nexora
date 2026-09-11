@@ -1,23 +1,26 @@
-import { mockEvents, mockIncidents } from "./data/mockData";
-import { LiveFeed } from "./components/LiveFeed";
-import { AnomalyChart } from "./components/AnomalyChart";
-import { IncidentTimeline } from "./components/IncidentTimeline";
-import { EvidencePanel } from "./components/EvidencePanel";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import AppLayout from './layouts/AppLayout';
+import Dashboard from './pages/Dashboard/Dashboard';
+import IncidentsList from './pages/Incidents/IncidentsList';
+import IncidentDetail from './pages/Incidents/IncidentDetail';
+import LiveActivity from './pages/LiveActivity/LiveActivity';
+import './index.css';
+
 function App() {
   return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>Nexora</h1>
-        <span className="subtitle">Security Event Correlation — Dashboard</span>
-      </header>
-
-      <main className="dashboard-grid">
-        <LiveFeed events={mockEvents} />
-        <AnomalyChart events={mockEvents} />
-        <IncidentTimeline incidents={mockIncidents} />
-        <EvidencePanel incident={mockIncidents[0]} />
-      </main>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<AppLayout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="incidents" element={<IncidentsList />} />
+          <Route path="incidents/:id" element={<IncidentDetail />} />
+          <Route path="live" element={<LiveActivity />} />
+          {/* Fallback route */}
+          <Route path="*" element={<div className="p-8 text-text-secondary">Page not found or under construction.</div>} />
+        </Route>
+      </Routes>
+    </Router>
   );
 }
 
