@@ -19,7 +19,7 @@ function App() {
             <Route path="incidents/:id" element={<IncidentDetail />} />
             <Route path="live" element={<LiveActivity />} />
             {/* Fallback route */}
-            <Route path="*" element={<div className="p-8 text-text-secondary">Page not found or under construction.</div>} />
+            <Route path="*" element={<div className="p-8 font-mono text-sm text-text-tertiary">404 — PAGE NOT FOUND OR UNDER CONSTRUCTION</div>} />
           </Route>
         </Routes>
       </Router>

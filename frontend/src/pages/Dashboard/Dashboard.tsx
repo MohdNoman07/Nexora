@@ -1,216 +1,151 @@
 import { Link } from 'react-router-dom';
-import { 
-  ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
-} from 'recharts';
-import { ShieldAlert, AlertTriangle, Activity, ArrowRight } from 'lucide-react';
+import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
+import { ArrowRight } from 'lucide-react';
 import { useSimulation } from '../../context/SimulationContext';
+import { Panel, SeverityTag, ScoreTag, eventLabel, templateLabel } from '../../components/ui';
 import { format } from 'date-fns';
 
-const getIncidentLabel = (templateName: string): string => {
-  const labels: Record<string, string> = {
-    credential_compromise_exfiltration: 'Credential Stuffing → Data Exfiltration',
-    port_scan_detected: 'Port Scan / Reconnaissance',
-    brute_force_attack: 'Brute Force Attack',
-  };
-  return labels[templateName] ?? templateName.replace(/_/g, ' ').toUpperCase();
-};
-
 const Dashboard = () => {
-  const { events: mockEvents, incidents: mockIncidents } = useSimulation();
-  // Compute metrics
-  const totalEvents = mockEvents.length;
-  // Events with an attack_label have been classified by the injector as confirmed attack events.
-  // This is the only grounded 'flagging' criterion in the current pipeline.
-  const labelledAttackEvents = mockEvents.filter(e => e.attack_label !== undefined).length;
-  const openIncidents = mockIncidents.length;
-  const criticalIncidents = mockIncidents.filter(i => i.severity === 'Critical').length;
+  const { events, incidents } = useSimulation();
 
-  // Chart data: sort events by time, format for Recharts
-  const chartData = [...mockEvents]
+  const totalEvents = events.length;
+  const labelledAttackEvents = events.filter(e => e.attack_label !== undefined).length;
+  const openIncidents = incidents.length;
+  const criticalIncidents = incidents.filter(i => i.severity === 'Critical').length;
+
+  const chartData = [...events]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(e => ({
       time: format(new Date(e.timestamp), 'HH:mm:ss'),
       score: e.anomaly_score,
-      label: e.attack_label || 'normal'
     }));
 
+  // Most recently reconstructed incident drives the correlation preview —
+  // this reflects live state instead of a fixed illustrative example.
+  const latest = incidents[0];
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-text-primary">Security Overview</h1>
-        <p className="text-text-secondary">
-          Monitor suspicious activity and reconstructed security incidents across the simulated organisation.
-        </p>
+    <div className="space-y-5 max-w-[1400px] mx-auto pb-10">
+      <div>
+        <h1 className="font-mono text-lg font-semibold tracking-tight text-text-primary">SECURITY OVERVIEW</h1>
+        <p className="text-sm text-text-tertiary mt-1">Simulated organisational activity — suspicious events and reconstructed incidents.</p>
       </div>
 
-      {/* Summary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Total Events" value={totalEvents} icon={<Activity className="text-accent-blue w-5 h-5" />} />
-        <MetricCard title="Attack-Labeled Events" value={labelledAttackEvents} icon={<AlertTriangle className="text-accent-orange w-5 h-5" />} />
-        <MetricCard title="Open Incidents" value={openIncidents} icon={<AlertTriangle className="text-accent-orange w-5 h-5" />} />
-        <MetricCard title="Critical Incidents" value={criticalIncidents} icon={<ShieldAlert className="text-accent-red w-5 h-5" />} isAlert={criticalIncidents > 0} />
+      {/* Readouts */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-line border border-line rounded-sm overflow-hidden">
+        <Readout label="TOTAL EVENTS" value={totalEvents} />
+        <Readout label="ATTACK-LABELED" value={labelledAttackEvents} color="var(--color-sev-high)" />
+        <Readout label="OPEN INCIDENTS" value={openIncidents} color="var(--color-sev-high)" />
+        <Readout label="CRITICAL" value={criticalIncidents} color={criticalIncidents > 0 ? 'var(--color-sev-critical)' : undefined} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Chart Section */}
-        <div className="lg:col-span-2 bg-panel border border-border rounded-xl p-5 flex flex-col shadow-sm">
-          <div className="mb-6">
-            <h2 className="font-semibold text-lg text-text-primary">Event Anomaly Scores</h2>
-            <p className="text-sm text-text-secondary">Scores shown from the simulated event stream</p>
-          </div>
-          <div className="flex-1 min-h-[300px] -ml-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Panel title="ANOMALY SCORE" subtitle="Simulated event stream, by time" className="lg:col-span-2">
+          <div className="h-[280px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} dy={10} />
-                <YAxis dataKey="score" domain={[0, 1]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ color: '#0f172a', fontWeight: 500 }}
-                  labelStyle={{ color: '#475569', marginBottom: '4px' }}
+                <CartesianGrid stroke="#1a222b" vertical={false} />
+                <XAxis dataKey="time" axisLine={{ stroke: '#232d38' }} tickLine={false} tick={{ fontSize: 11, fill: '#56626d', fontFamily: 'IBM Plex Mono' }} dy={8} />
+                <YAxis dataKey="score" domain={[0, 1]} axisLine={{ stroke: '#232d38' }} tickLine={false} tick={{ fontSize: 11, fill: '#56626d', fontFamily: 'IBM Plex Mono' }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#151d26', borderColor: '#232d38', borderRadius: 2, fontFamily: 'IBM Plex Mono', fontSize: 12 }}
+                  itemStyle={{ color: '#e7edf2' }}
+                  labelStyle={{ color: '#8b98a5' }}
                 />
                 <Scatter data={chartData} shape="circle">
                   {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.score >= 0.8 ? '#ef4444' : entry.score >= 0.5 ? '#f97316' : '#64748b'} />
+                    <Cell key={`cell-${index}`} fill={entry.score >= 0.8 ? '#ff5470' : entry.score >= 0.5 ? '#ffa53d' : '#56626d'} />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </Panel>
 
-        {/* Correlation Preview */}
-        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-semibold text-lg text-text-primary">Correlation Engine</h2>
-            <p className="text-sm text-text-secondary">Example reconstructed attack chain</p>
-          </div>
-          <div className="flex-1 flex flex-col justify-center items-center py-6 bg-background/50 rounded-lg border border-border px-4">
-            <div className="flex items-center gap-3 w-full justify-center flex-wrap">
-              <div className="flex flex-col items-center gap-2 p-3 bg-panel border border-border rounded shadow-sm min-w-[110px]">
-                 <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Entity Match</span>
-                 <div className="text-sm font-bold text-text-primary">j.patel</div>
-                 <div className="text-xs text-text-secondary font-mono">203.0.113.14</div>
+        <Panel title="CORRELATION ENGINE" subtitle={latest ? `Most recent reconstruction — ${latest.id}` : 'Awaiting first incident'}>
+          {latest ? (
+            <div className="flex-1 flex flex-col justify-center items-center py-6 px-4">
+              <div className="flex items-center gap-2 w-full justify-center flex-wrap">
+                <SchematicNode label="ENTITY" value={Object.values(latest.entity)[0] ?? '—'} sub={Object.values(latest.entity)[1]} color="var(--color-signal)" />
+                <ArrowRight className="w-4 h-4 shrink-0 text-text-tertiary" />
+                <SchematicNode label="PATTERN" value={latest.correlationExplanation?.patternMatched || templateLabel(latest.template_name)} color="var(--color-sev-high)" />
+                <ArrowRight className="w-4 h-4 shrink-0 text-text-tertiary" />
+                <SchematicNode label="SEVERITY" value={latest.severity} color="var(--color-sev-critical)" />
               </div>
-              <ArrowRight className="w-5 h-5 text-accent-blue shrink-0" />
-              <div className="flex flex-col items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded shadow-sm min-w-[110px]">
-                 <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Pattern</span>
-                 <div className="text-sm font-bold text-orange-800 text-center">Credential<br/>Stuffing</div>
+              <div className="mt-5 flex items-center gap-2 text-[11px] font-mono text-text-tertiary">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-signal)' }} />
+                {latest.matched_events.length} correlated events
               </div>
-              <ArrowRight className="w-5 h-5 text-accent-red shrink-0" />
-              <div className="flex flex-col items-center gap-2 p-3 bg-red-50 border border-red-200 rounded shadow-sm min-w-[110px]">
-                 <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider">Impact</span>
-                 <div className="text-sm font-bold text-red-800 text-center">Data<br/>Exfiltration</div>
-              </div>
+              <Link to={`/incidents/${latest.id}`} className="mt-3 text-xs font-mono hover:underline" style={{ color: 'var(--color-signal)' }}>
+                VIEW RECONSTRUCTION →
+              </Link>
             </div>
-            <div className="mt-6 text-xs text-text-secondary bg-panel px-4 py-2 rounded-full border border-border shadow-sm flex items-center gap-2">
-               <span className="w-1.5 h-1.5 rounded-full bg-accent-blue"></span>
-               Correlation Window: <span className="font-medium text-text-primary">3 minutes</span>
-            </div>
-          </div>
-        </div>
-
+          ) : (
+            <div className="flex-1 flex items-center justify-center py-10 text-sm text-text-tertiary">No incidents reconstructed yet.</div>
+          )}
+        </Panel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-         {/* Active Incidents */}
-         <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-border flex justify-between items-center bg-background/30">
-              <h2 className="font-semibold text-lg text-text-primary">Active Incidents</h2>
-              <Link to="/incidents" className="text-sm font-medium text-accent-blue hover:underline">View All</Link>
-            </div>
-            <div className="divide-y divide-border">
-              {mockIncidents.map(inc => (
-                <Link key={inc.id} to={`/incidents/${inc.id}`} className="block p-4 hover:bg-background transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-text-primary">{inc.id}</span>
-                      <SeverityBadge severity={inc.severity} />
-                    </div>
-                    <span className="text-xs font-medium text-text-tertiary bg-border px-2 py-0.5 rounded">
-                      {Math.round(inc.confidence * 100)}% Confidence
-                    </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Panel title="ACTIVE INCIDENTS" action={<Link to="/incidents" className="text-xs font-mono hover:underline" style={{ color: 'var(--color-signal)' }}>ALL →</Link>}>
+          <div className="divide-y divide-[var(--color-line-soft)]">
+            {incidents.slice(0, 6).map(inc => (
+              <Link key={inc.id} to={`/incidents/${inc.id}`} className="block p-4 hover:bg-ink-2/50 transition-colors">
+                <div className="flex justify-between items-start mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm text-text-primary">{inc.id}</span>
+                    <SeverityTag severity={inc.severity} />
                   </div>
-                  <div className="text-sm text-text-secondary mb-3 font-medium">
-                    {getIncidentLabel(inc.template_name)}
-                  </div>
-                  <div className="flex gap-4 text-xs text-text-tertiary">
-                    <span>{inc.matched_events.length} events</span>
-                    <span>•</span>
-                    <span>{format(new Date(inc.start_time), 'MMM d, HH:mm')}</span>
-                  </div>
-                </Link>
+                  <span className="readout text-xs text-text-tertiary">{Math.round(inc.confidence * 100)}%</span>
+                </div>
+                <div className="text-sm text-text-secondary mb-2">{templateLabel(inc.template_name)}</div>
+                <div className="flex gap-3 text-[11px] font-mono text-text-tertiary">
+                  <span>{inc.matched_events.length} EVENTS</span>
+                  <span>{format(new Date(inc.start_time), 'MMM d, HH:mm').toUpperCase()}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="RECENT ACTIVITY" action={<Link to="/live" className="text-xs font-mono hover:underline" style={{ color: 'var(--color-signal)' }}>LIVE →</Link>}>
+          <table className="w-full text-sm text-left">
+            <thead className="text-[10px] font-mono text-text-tertiary border-b border-line-soft">
+              <tr>
+                <th className="px-4 py-2 font-medium">TIME</th>
+                <th className="px-4 py-2 font-medium">EVENT</th>
+                <th className="px-4 py-2 font-medium text-right">SCORE</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-line-soft)]">
+              {[...events].reverse().slice(0, 6).map(ev => (
+                <tr key={ev.id}>
+                  <td className="px-4 py-2.5 readout text-xs text-text-secondary">{format(new Date(ev.timestamp), 'HH:mm:ss')}</td>
+                  <td className="px-4 py-2.5 text-xs text-text-secondary">{eventLabel(ev.event_type)}</td>
+                  <td className="px-4 py-2.5 text-right"><ScoreTag value={ev.anomaly_score} /></td>
+                </tr>
               ))}
-            </div>
-         </div>
-
-         {/* Recent Activity */}
-         <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-border flex justify-between items-center bg-background/30">
-              <h2 className="font-semibold text-lg text-text-primary">Recent Activity</h2>
-              <Link to="/live" className="text-sm font-medium text-accent-blue hover:underline">Live Feed</Link>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left whitespace-nowrap">
-                <thead className="text-xs text-text-tertiary uppercase bg-background border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Time</th>
-                    <th className="px-4 py-3 font-medium">Event Type</th>
-                    <th className="px-4 py-3 font-medium">Score</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {[...mockEvents].reverse().slice(0, 6).map(ev => (
-                    <tr key={ev.id} className="hover:bg-background transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-text-secondary">{format(new Date(ev.timestamp), 'HH:mm:ss')}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-border text-text-secondary uppercase tracking-wider">
-                          {ev.event_type.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                         <span className={`font-mono text-xs font-medium ${ev.anomaly_score > 0.8 ? 'text-accent-red' : ev.anomaly_score > 0.5 ? 'text-accent-orange' : 'text-text-secondary'}`}>
-                           {ev.anomaly_score.toFixed(2)}
-                         </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-         </div>
+            </tbody>
+          </table>
+        </Panel>
       </div>
     </div>
   );
 };
 
-const MetricCard = ({ title, value, icon, isAlert }: { title: string, value: number, icon: React.ReactNode, isAlert?: boolean }) => {
-  return (
-    <div className={`bg-panel border ${isAlert ? 'border-accent-red/30' : 'border-border'} rounded-xl p-5 shadow-sm`}>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-text-secondary">{title}</h3>
-        <div className={`p-2 rounded-lg ${isAlert ? 'bg-accent-red/10' : 'bg-background'}`}>
-          {icon}
-        </div>
-      </div>
-      <div className="text-3xl font-bold text-text-primary">{value}</div>
-    </div>
-  );
-};
+const Readout = ({ label, value, color }: { label: string; value: number; color?: string }) => (
+  <div className="bg-ink-1 p-4">
+    <div className="text-[10px] font-mono text-text-tertiary tracking-wide mb-1.5">{label}</div>
+    <div className="readout text-2xl font-semibold" style={{ color: color ?? 'var(--color-text-primary)' }}>{value}</div>
+  </div>
+);
 
-const SeverityBadge = ({ severity }: { severity: string }) => {
-  const colors = {
-    Critical: 'bg-red-50 text-red-700 border-red-200',
-    High: 'bg-orange-50 text-orange-700 border-orange-200',
-    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
-    Low: 'bg-blue-50 text-blue-700 border-blue-200',
-  }[severity] || 'bg-slate-50 text-slate-700 border-slate-200';
-  
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${colors}`}>
-      {severity}
-    </span>
-  );
-};
+const SchematicNode = ({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) => (
+  <div className="flex flex-col items-center gap-1.5 px-3 py-2.5 bg-ink-2 border rounded-sm min-w-[100px]" style={{ borderColor: color + '40' }}>
+    <span className="text-[9px] font-mono tracking-wide" style={{ color }}>{label}</span>
+    <span className="text-xs font-mono font-semibold text-text-primary text-center leading-tight">{value}</span>
+    {sub && <span className="text-[10px] font-mono text-text-tertiary">{sub}</span>}
+  </div>
+);
 
 export default Dashboard;

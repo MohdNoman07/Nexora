@@ -229,7 +229,7 @@ export const mockIncidents: Incident[] = [
       timeWindow: '3 minutes',
       patternMatched: 'Credential Stuffing → Data Exfiltration',
       aggregateRiskScore: 95,
-      severityBoost: '+20 points due to matching known attack chain pattern.'
+      severityBoost: 'Elevated severity due to matching known attack chain pattern.'
     }
   },
   {
@@ -255,7 +255,7 @@ export const mockIncidents: Incident[] = [
       timeWindow: '45 seconds',
       patternMatched: 'Port Scan / Reconnaissance',
       aggregateRiskScore: 82,
-      severityBoost: '+10 points for sustained scanning duration.'
+      severityBoost: 'Elevated severity for sustained scanning duration.'
     }
   },
   {
@@ -281,7 +281,7 @@ export const mockIncidents: Incident[] = [
       timeWindow: '6 seconds',
       patternMatched: 'Brute Force Attack',
       aggregateRiskScore: 88,
-      severityBoost: '+15 points for targeting privileged accounts.'
+      severityBoost: 'Elevated severity for targeting privileged accounts.'
     }
   },
 ];

@@ -1,65 +1,107 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: #f8fafc;
-  --color-panel: #ffffff;
-  --color-panel-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #94a3b8;
-  
-  --color-accent-orange: #ea580c;
-  --color-accent-red: #dc2626;
-  --color-accent-green: #16a34a;
-  --color-accent-blue: #4f46e5; /* indigo */
+/*
+ * NEXORA — ops-console design system
+ *
+ * Direction: dense instrument-panel, not a SaaS admin template.
+ * - Base is a cool graphite, not pure black — panels are flat, hairline-
+ *   bordered surfaces (no drop shadows, no shared border-radius kit).
+ * - Colour is a functional signal system: severity tiers each own a hue.
+ *   The single "signal" accent is reserved for interactive/live state only,
+ *   never used as pure brand decoration.
+ * - Type: IBM Plex Mono carries structure, labels, data and headings —
+ *   the console's own voice. IBM Plex Sans is reserved for prose (incident
+ *   descriptions, recommended actions) where a long line of monospace
+ *   would hurt readability.
+ */
 
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  
-  --animate-fade-in-down: fade-in-down 0.5s ease-out;
-  @keyframes fade-in-down {
-    0% {
-      opacity: 0;
-      transform: translateY(-10px);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0);
-    }
+@theme {
+  --color-ink-0: #0a0f14;      /* page background */
+  --color-ink-1: #0f151c;      /* panel surface */
+  --color-ink-2: #151d26;      /* raised / hover surface */
+  --color-line: #232d38;       /* hairline borders, dividers */
+  --color-line-soft: #1a222b;  /* quieter internal dividers */
+
+  --color-text-primary: #e7edf2;
+  --color-text-secondary: #8b98a5;
+  --color-text-tertiary: #56626d;
+
+  /* interactive / live accent — never used for severity */
+  --color-signal: #33d6c0;
+  --color-signal-dim: #1b7e72;
+
+  /* severity system — each tier is its own hue, not one accent tinted */
+  --color-sev-critical: #ff5470;
+  --color-sev-high: #ffa53d;
+  --color-sev-medium: #f0c94c;
+  --color-sev-low: #5b8def;
+  --color-sev-info: #6b7785;
+
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  --animate-pulse-live: pulse-live 2s ease-in-out infinite;
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  --animate-row-in: row-in 0.25s ease-out;
+  @keyframes row-in {
+    0% { opacity: 0; transform: translateY(-4px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
 
 :root {
-  background-color: var(--color-background);
+  background-color: var(--color-ink-0);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: var(--color-background);
+  background-color: var(--color-ink-0);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styles */
+/* Visible keyboard focus everywhere — instrument panels are operated by
+   analysts, not just clicked; keyboard nav should be first-class. */
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: transparent; 
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border); 
+  background: var(--color-line);
   border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary); 
+  background: var(--color-text-tertiary);
+}
+
+/* Console readouts — big mono numerals used for live metrics */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
