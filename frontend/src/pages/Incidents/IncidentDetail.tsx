@@ -56,8 +56,14 @@ const IncidentDetail = () => {
 
       {/* Correlation Graph */}
       <Panel title="CORRELATION GRAPH">
-        <div className="p-6 overflow-x-auto bg-ink-2">
-          <div className="min-w-[700px] h-[300px] relative">
+        <div className="p-0 overflow-x-auto bg-ink-2 relative group border-b border-line">
+          {/* Subtle radial glow background for the graph area */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-50 transition-opacity duration-1000 group-hover:opacity-100">
+            <div className="absolute top-1/2 left-[300px] -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full blur-[120px] opacity-[0.15]" style={{ backgroundColor: accentColor }} />
+            <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(circle, var(--color-line) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.3 }} />
+          </div>
+
+          <div className="min-w-[800px] max-w-[900px] mx-auto h-[360px] relative">
             <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
               {/* Defs for gradients/markers if needed */}
               <defs>
@@ -71,23 +77,23 @@ const IncidentDetail = () => {
 
               {/* Draw Links */}
               {chain.map((ev, i) => {
-                const eventY = 40 + i * ((300 - 80) / Math.max(1, chain.length - 1));
+                const eventY = 60 + i * ((360 - 120) / Math.max(1, chain.length - 1));
                 const isSelected = selectedEventId === ev.id;
                 
                 // IP to User link (drawn once)
                 const ipToUser = i === 0 && incident.entity.user && incident.entity.ip;
                 
                 // User/IP to Event link
-                const sourceX = incident.entity.user ? 250 : 100;
-                const sourceY = 150;
-                const targetX = 480;
+                const sourceX = incident.entity.user ? 300 : 150;
+                const sourceY = 180;
+                const targetX = 530;
                 const targetY = eventY;
 
                 return (
                   <g key={`link-${ev.id}`}>
                     {ipToUser && (
                       <path 
-                        d="M 160 150 L 190 150" 
+                        d="M 210 180 L 240 180" 
                         stroke="var(--color-text-tertiary)" 
                         strokeWidth="1.5" 
                         fill="none" 
@@ -95,13 +101,13 @@ const IncidentDetail = () => {
                       />
                     )}
                     <path
-                      d={`M ${sourceX + 60} ${sourceY} C ${sourceX + 120} ${sourceY}, ${targetX - 60} ${targetY}, ${targetX} ${targetY}`}
+                      d={`M ${sourceX + 60} ${sourceY} C ${sourceX + 140} ${sourceY}, ${targetX - 80} ${targetY}, ${targetX} ${targetY}`}
                       stroke={isSelected ? 'var(--color-signal)' : 'var(--color-text-tertiary)'}
                       strokeWidth={isSelected ? "2" : "1.5"}
                       strokeDasharray={isSelected ? "none" : "4 4"}
                       fill="none"
                       markerEnd={isSelected ? "url(#arrow-active)" : "url(#arrow)"}
-                      className="transition-all duration-300"
+                      className={isSelected ? "animate-pulse" : "transition-all duration-300 opacity-60"}
                     />
                   </g>
                 );
@@ -112,11 +118,11 @@ const IncidentDetail = () => {
             
             {/* IP Node */}
             {incident.entity.ip && (
-              <div className="absolute top-[150px] left-[100px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5">
-                <div className="w-10 h-10 rounded-sm bg-ink-1 border border-line flex items-center justify-center text-text-tertiary shadow-sm">
-                  <Network className="w-4 h-4" />
+              <div className="absolute top-[180px] left-[150px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10">
+                <div className="w-11 h-11 rounded-sm bg-ink-1 border flex items-center justify-center text-text-secondary shadow-lg" style={{ borderColor: 'var(--color-line-strong)' }}>
+                  <Network className="w-4.5 h-4.5" />
                 </div>
-                <div className="text-[10px] font-mono font-semibold text-text-primary bg-ink-1 px-1.5 py-0.5 rounded border border-line">
+                <div className="text-[11px] font-mono font-semibold text-text-primary bg-ink-1 px-2 py-0.5 rounded-sm border shadow-sm" style={{ borderColor: 'var(--color-line-strong)' }}>
                   {incident.entity.ip}
                 </div>
                 <div className="text-[9px] font-mono text-text-tertiary uppercase tracking-wider">Source IP</div>
@@ -125,11 +131,12 @@ const IncidentDetail = () => {
 
             {/* User Node */}
             {incident.entity.user && (
-              <div className="absolute top-[150px] left-[250px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5">
-                <div className="w-10 h-10 rounded-sm bg-ink-1 border border-line flex items-center justify-center text-text-tertiary shadow-sm">
-                  <Users className="w-4 h-4" />
+              <div className="absolute top-[180px] left-[300px] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10">
+                <div className="w-11 h-11 rounded-sm border flex items-center justify-center shadow-lg relative" style={{ backgroundColor: 'rgba(51,214,192,0.05)', borderColor: 'var(--color-signal-dim)' }}>
+                  <div className="absolute inset-0 rounded-sm animate-pulse-live opacity-20" style={{ backgroundColor: 'var(--color-signal)' }} />
+                  <Users className="w-4.5 h-4.5 relative z-10" style={{ color: 'var(--color-signal)' }} />
                 </div>
-                <div className="text-[10px] font-mono font-semibold text-text-primary bg-ink-1 px-1.5 py-0.5 rounded border border-line">
+                <div className="text-[11px] font-mono font-semibold text-text-primary bg-ink-1 px-2 py-0.5 rounded-sm border shadow-sm" style={{ borderColor: 'var(--color-signal-dim)' }}>
                   {incident.entity.user}
                 </div>
                 <div className="text-[9px] font-mono text-text-tertiary uppercase tracking-wider">User Account</div>
@@ -138,29 +145,31 @@ const IncidentDetail = () => {
 
             {/* Event Nodes */}
             {chain.map((ev, i) => {
-              const eventY = 40 + i * ((300 - 80) / Math.max(1, chain.length - 1));
+              const eventY = 60 + i * ((360 - 120) / Math.max(1, chain.length - 1));
               const isSelected = selectedEventId === ev.id;
               
               return (
                 <button
                   key={`node-${ev.id}`}
                   onClick={() => setSelectedEventId(ev.id === selectedEventId ? null : (ev.id as string))}
-                  className="absolute left-[500px] -translate-y-1/2 flex items-center gap-3 transition-all duration-300 hover:z-10 group"
+                  className="absolute left-[550px] -translate-y-1/2 flex items-center gap-4 transition-all duration-300 hover:z-20 group z-10"
                   style={{ top: eventY }}
                 >
                   <div 
-                    className="w-8 h-8 rounded-sm border flex items-center justify-center shrink-0 transition-colors shadow-sm"
+                    className="w-10 h-10 rounded-sm border flex items-center justify-center shrink-0 transition-colors shadow-md relative"
                     style={{
-                      borderColor: isSelected ? 'var(--color-signal)' : 'var(--color-line)',
+                      borderColor: isSelected ? 'var(--color-signal)' : 'var(--color-line-strong)',
                       backgroundColor: isSelected ? 'rgba(51,214,192,0.1)' : 'var(--color-ink-1)',
                       color: isSelected ? 'var(--color-signal)' : 'var(--color-text-secondary)',
                     }}
                   >
-                    <EventIcon type={ev.event_type} className="w-3.5 h-3.5" />
+                    {isSelected && <div className="absolute inset-0 rounded-sm animate-ping opacity-20" style={{ backgroundColor: 'var(--color-signal)' }} />}
+                    <EventIcon type={ev.event_type} className="w-4 h-4 relative z-10" />
                   </div>
-                  <div className="flex flex-col items-start text-left bg-ink-1 border border-line px-2.5 py-1.5 rounded-sm shadow-sm group-hover:border-text-tertiary transition-colors">
-                    <span className="text-[10px] font-mono font-semibold text-text-primary uppercase">{eventLabel(ev.event_type)}</span>
-                    <span className="text-[9px] font-mono text-text-tertiary mt-0.5">{format(new Date(ev.timestamp), 'HH:mm:ss')}</span>
+                  <div className="flex flex-col items-start text-left bg-ink-1 border px-3 py-2 rounded-sm shadow-md transition-colors"
+                    style={{ borderColor: isSelected ? 'var(--color-signal-dim)' : 'var(--color-line-strong)' }}>
+                    <span className="text-[11px] font-mono font-semibold text-text-primary uppercase tracking-wide">{eventLabel(ev.event_type)}</span>
+                    <span className="text-[10px] font-mono text-text-tertiary mt-0.5 readout">{format(new Date(ev.timestamp), 'HH:mm:ss')}</span>
                   </div>
                   
                   {/* Extract metadata summary if any */}
