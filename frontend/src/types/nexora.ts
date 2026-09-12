@@ -7,6 +7,7 @@ export type EventType =
   | "file_access"
   | "port_scan"
   | "brute_force_attempt"
+  | "privilege_escalation"
   | "data_exfiltration";
 
 export interface NexoraEvent {

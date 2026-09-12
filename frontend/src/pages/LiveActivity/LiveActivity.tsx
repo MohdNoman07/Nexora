@@ -1,38 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, Activity, X } from 'lucide-react';
+import { Play, Square, X } from 'lucide-react';
 import { useSimulation } from '../../context/SimulationContext';
 import type { NexoraEvent } from '../../types/nexora';
+import { Panel, EventIcon, ScoreTag, eventLabel } from '../../components/ui';
 import { format } from 'date-fns';
 
 const LiveActivity = () => {
   const { events: simEvents } = useSimulation();
 
-  // Ref so the interval always reads the current event pool without restarting
   const simEventsRef = useRef(simEvents);
   useEffect(() => { simEventsRef.current = simEvents; }, [simEvents]);
 
-  // Local display state — initialized from global pool, managed by interval + injection watcher
-  const [events, setEvents] = useState<NexoraEvent[]>(() => [...simEvents].reverse().slice(0, 8));
+  const [events, setEvents] = useState<NexoraEvent[]>(() => {
+    const base = [...simEvents].reverse().slice(0, 8);
+    const now = Date.now();
+    return base.map((ev, i) => ({
+      ...ev,
+      // i=0 is top (most recent), i=7 is bottom (oldest). 2 seconds apart.
+      timestamp: new Date(now - i * 2000).toISOString()
+    }));
+  });
   const [isLive, setIsLive] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<NexoraEvent | null>(null);
 
-  // Watch for newly injected events (appended to global state during injection)
   const prevSimLengthRef = useRef(simEvents.length);
   useEffect(() => {
     const current = simEvents.length;
     if (current > prevSimLengthRef.current) {
       const newEvents = simEvents.slice(prevSimLengthRef.current);
-      // Prepend each injected event to the top of the live feed
       setEvents(prev => [...[...newEvents].reverse(), ...prev].slice(0, 50));
       prevSimLengthRef.current = current;
     }
   }, [simEvents]);
 
-  // Existing interval simulation — cycles through global pool to produce background chatter
-  // Entirely independent of injection. Uses ref so pool updates don't restart the interval.
   useEffect(() => {
     if (!isLive) return;
-
     let currentIndex = 0;
     const interval = setInterval(() => {
       setEvents(prev => {
@@ -46,140 +48,122 @@ const LiveActivity = () => {
         return [nextEvent, ...prev].slice(0, 50);
       });
     }, 2000);
-
     return () => clearInterval(interval);
   }, [isLive]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5 max-w-[1400px] mx-auto pb-10">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Live Event Stream</h1>
-          <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-            isLive ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-500 border-slate-200'
-          }`}>
-             <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-slate-400'}`}></span>
-             {isLive ? 'LIVE' : 'PAUSED'}
-          </span>
-          <span className="text-xs font-medium text-text-tertiary bg-border px-2 py-1 rounded">Simulation Mode</span>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setIsLive(!isLive)}
-            className="flex items-center gap-2 bg-panel border border-border px-3 py-1.5 rounded-md text-sm hover:border-text-tertiary transition-colors shadow-sm font-medium"
+          <h1 className="font-mono text-lg font-semibold tracking-tight text-text-primary">LIVE EVENT STREAM</h1>
+          <span
+            className="flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono border"
+            style={{
+              color: isLive ? 'var(--color-sev-critical)' : 'var(--color-text-tertiary)',
+              borderColor: isLive ? 'rgba(255,84,112,0.4)' : 'var(--color-line)',
+            }}
           >
-             {isLive ? <Square className="w-4 h-4 text-accent-orange" /> : <Play className="w-4 h-4 text-accent-green" />} 
-             {isLive ? 'Pause Stream' : 'Resume Stream'}
-          </button>
+            <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'animate-pulse-live' : ''}`} style={{ backgroundColor: isLive ? 'var(--color-sev-critical)' : 'var(--color-text-tertiary)' }} />
+            {isLive ? 'LIVE' : 'PAUSED'}
+          </span>
         </div>
+        <button
+          onClick={() => setIsLive(!isLive)}
+          className="flex items-center gap-2 bg-ink-1 border border-line px-3 py-1.5 rounded-sm text-xs font-mono hover:border-text-tertiary transition-colors"
+        >
+          {isLive ? <Square className="w-3.5 h-3.5" style={{ color: 'var(--color-sev-high)' }} /> : <Play className="w-3.5 h-3.5" style={{ color: 'var(--color-signal)' }} />}
+          {isLive ? 'PAUSE' : 'RESUME'}
+        </button>
       </div>
-      
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        <div className={`bg-panel border border-border rounded-xl shadow-sm overflow-hidden flex flex-col transition-all ${selectedEvent ? 'w-full lg:w-2/3' : 'w-full'}`}>
-           <div className={`p-4 border-b border-border flex items-center justify-between ${isLive ? 'bg-background/50' : 'bg-slate-100 opacity-70'}`}>
-              <div className="text-sm font-medium text-text-primary flex items-center gap-2">
-                <Activity className={`w-4 h-4 ${isLive ? 'text-accent-blue' : 'text-slate-400'}`} /> {isLive ? 'Real-Time Correlation Feed' : 'Feed Paused'}
-              </div>
-              <div className="text-xs text-text-tertiary font-mono">
-                Displaying {events.length} events
-              </div>
-           </div>
-           <div className={`overflow-x-auto ${!isLive ? 'opacity-80' : ''}`}>
-             <table className="w-full text-sm text-left whitespace-nowrap">
-               <thead className="text-xs text-text-tertiary uppercase bg-background border-b border-border">
-                 <tr>
-                   <th className="px-6 py-4 font-medium">Time</th>
-                   <th className="px-6 py-4 font-medium">Event Type</th>
-                   <th className="px-6 py-4 font-medium">Target / Action</th>
-                   <th className="px-6 py-4 font-medium">Source IP</th>
-                   <th className="px-6 py-4 font-medium text-right">Anomaly Score</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-border">
-                 {events.map((ev) => {
-                   const metadataStr = ev.metadata ? Object.entries(ev.metadata).map(([k,v]) => `${k}:${v}`).join(' ') : '-';
-                   const isSelected = selectedEvent?.id === ev.id;
-                   
-                   return (
-                   <tr key={ev.id} onClick={() => setSelectedEvent(ev)} className={`cursor-pointer transition-colors group animate-fade-in-down ${isSelected ? 'bg-accent-blue/10 border-l-2 border-accent-blue' : ev.attack_label ? 'bg-red-50/30 hover:bg-red-50/50' : 'hover:bg-background/80'}`}>
-                     <td className="px-6 py-4 font-mono text-xs text-text-secondary border-l-2 border-transparent">
-                       {format(new Date(ev.timestamp), 'HH:mm:ss')}
-                     </td>
-                     <td className="px-6 py-4">
-                       <div className="flex items-center gap-2">
-                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${ev.attack_label ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                           {ev.event_type.replace(/_/g, ' ')}
-                         </span>
-                         {ev.attack_label && (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
-                             {ev.attack_label}
-                           </span>
-                         )}
-                       </div>
-                     </td>
-                     <td className="px-6 py-4 text-xs font-mono text-text-secondary truncate max-w-[150px]" title={metadataStr}>
-                       {metadataStr}
-                     </td>
-                     <td className="px-6 py-4 font-mono text-xs text-text-secondary">{ev.ip}</td>
-                     <td className="px-6 py-4 text-right">
-                       <span className={`font-mono text-xs font-medium px-2 py-1 rounded bg-slate-50 border ${ev.anomaly_score >= 0.8 ? 'text-accent-red border-red-200 bg-red-50' : ev.anomaly_score >= 0.5 ? 'text-accent-orange border-orange-200 bg-orange-50' : 'text-text-secondary border-slate-200'}`}>
-                         {ev.anomaly_score.toFixed(2)}
-                       </span>
-                     </td>
-                   </tr>
-                 )})}
-               </tbody>
-             </table>
-           </div>
-        </div>
+
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
+        <Panel className={selectedEvent ? 'w-full lg:w-2/3' : 'w-full'} title="REAL-TIME CORRELATION FEED" subtitle={`Displaying ${events.length} events`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-[10px] font-mono text-text-tertiary tracking-wide border-b border-line-soft">
+                <tr>
+                  <th className="px-5 py-2.5 font-medium">TIME</th>
+                  <th className="px-5 py-2.5 font-medium">EVENT</th>
+                  <th className="px-5 py-2.5 font-medium">TARGET</th>
+                  <th className="px-5 py-2.5 font-medium">SOURCE IP</th>
+                  <th className="px-5 py-2.5 font-medium text-right">ANOMALY</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-line-soft)]">
+                {events.map(ev => {
+                  const metadataStr = ev.metadata ? Object.entries(ev.metadata).map(([k, v]) => `${k}:${v}`).join(' ') : '—';
+                  const isSelected = selectedEvent?.id === ev.id;
+                  return (
+                    <tr
+                      key={ev.id}
+                      onClick={() => setSelectedEvent(ev)}
+                      className="cursor-pointer transition-colors animate-row-in border-l-2"
+                      style={{
+                        backgroundColor: isSelected ? 'rgba(51,214,192,0.06)' : ev.attack_label ? 'rgba(255,84,112,0.04)' : undefined,
+                        borderLeftColor: isSelected ? 'var(--color-signal)' : 'transparent',
+                      }}
+                    >
+                      <td className="px-5 py-3 readout text-xs text-text-secondary">{format(new Date(ev.timestamp), 'HH:mm:ss')}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
+                            <EventIcon type={ev.event_type} /> {eventLabel(ev.event_type)}
+                          </span>
+                          {ev.attack_label && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ color: 'var(--color-sev-critical)', backgroundColor: 'rgba(255,84,112,0.1)' }}>
+                              {ev.attack_label.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-xs readout text-text-tertiary truncate max-w-[150px]" title={metadataStr}>{metadataStr}</td>
+                      <td className="px-5 py-3 text-xs readout text-text-secondary">{ev.ip}</td>
+                      <td className="px-5 py-3 text-right"><ScoreTag value={ev.anomaly_score} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
 
         {selectedEvent && (
-          <div className="bg-panel border border-border rounded-xl shadow-sm flex flex-col w-full lg:w-1/3 animate-fade-in-down sticky top-6">
-             <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
-               <div className="text-sm font-semibold text-text-primary">Event Details</div>
-               <button onClick={() => setSelectedEvent(null)} className="text-text-tertiary hover:text-text-primary transition-colors p-1 rounded hover:bg-background">
-                 <X className="w-4 h-4" />
-               </button>
-             </div>
-             <div className="p-5 space-y-5 text-sm">
+          <Panel
+            className="w-full lg:w-1/3 sticky top-6"
+            title="EVENT DETAIL"
+            action={<button onClick={() => setSelectedEvent(null)} className="text-text-tertiary hover:text-text-primary"><X className="w-4 h-4" /></button>}
+          >
+            <div className="p-4 space-y-4 text-sm">
+              <DetailField label="EVENT ID" value={selectedEvent.id ?? '—'} mono />
+              <DetailField label="TIMESTAMP" value={format(new Date(selectedEvent.timestamp), 'yyyy-MM-dd HH:mm:ss')} mono />
+              <div className="grid grid-cols-2 gap-4">
+                <DetailField label="USER" value={selectedEvent.user} />
+                <DetailField label="SOURCE IP" value={selectedEvent.ip} mono />
+              </div>
+              <DetailField label="SESSION ID" value={selectedEvent.session} mono block />
+              {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
                 <div>
-                  <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">Event ID</div>
-                  <div className="font-mono text-text-primary">{selectedEvent.id}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">Timestamp</div>
-                  <div className="font-mono text-text-primary">{format(new Date(selectedEvent.timestamp), 'yyyy-MM-dd HH:mm:ss')}</div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">User</div>
-                    <div className="font-medium text-text-primary">{selectedEvent.user}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">Source IP</div>
-                    <div className="font-mono text-text-primary">{selectedEvent.ip}</div>
+                  <div className="text-[10px] font-mono text-text-tertiary tracking-wide mb-1.5">METADATA</div>
+                  <div className="bg-ink-2 border border-line-soft p-3 rounded-sm font-mono text-xs text-text-primary space-y-1">
+                    {Object.entries(selectedEvent.metadata).map(([k, v]) => (
+                      <div key={k}><span className="text-text-tertiary">{k}:</span> {v as string}</div>
+                    ))}
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">Session ID</div>
-                  <div className="font-mono text-text-primary text-xs break-all bg-background border border-border p-2 rounded">{selectedEvent.session}</div>
-                </div>
-                {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
-                  <div>
-                    <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-1">Metadata</div>
-                    <div className="bg-background border border-border p-3 rounded font-mono text-xs text-text-primary space-y-1">
-                      {Object.entries(selectedEvent.metadata).map(([k, v]) => (
-                        <div key={k}><span className="text-text-tertiary">{k}:</span> {v as string}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-             </div>
-          </div>
+              )}
+            </div>
+          </Panel>
         )}
       </div>
     </div>
   );
 };
+
+const DetailField = ({ label, value, mono, block }: { label: string; value: string; mono?: boolean; block?: boolean }) => (
+  <div>
+    <div className="text-[10px] font-mono text-text-tertiary tracking-wide mb-1">{label}</div>
+    <div className={`${mono ? 'readout' : ''} text-text-primary ${block ? 'text-xs break-all bg-ink-2 border border-line-soft p-2 rounded-sm' : ''}`}>{value}</div>
+  </div>
+);
 
 export default LiveActivity;
