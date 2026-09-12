@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, Link } from 'react-router-dom';
 import {
   Radar,
   Activity,
@@ -143,7 +143,9 @@ const StatusBar = () => {
   return (
     <header className="h-12 border-b border-line bg-ink-1 flex items-center justify-between px-5 shrink-0 text-xs font-mono">
       <div className="flex items-center gap-5 text-text-tertiary">
-        <span className="text-text-secondary font-semibold tracking-wide">NEXORA</span>
+        <Link to="/" className="text-text-secondary font-semibold tracking-wide hover:text-text-primary transition-colors">
+          NEXORA
+        </Link>
         <span className="hidden sm:inline">EVENTS&nbsp;<span className="readout text-text-primary">{events.length}</span></span>
         <span className="hidden md:inline-flex items-center gap-1.5">
           <Wifi className="w-3 h-3" style={{ color: 'var(--color-signal)' }} />

@@ -51,6 +51,19 @@
     0% { opacity: 0; transform: translateY(-4px); }
     100% { opacity: 1; transform: translateY(0); }
   }
+
+  /* Landing page animations */
+  --animate-orbit: orbit 30s linear infinite;
+  @keyframes orbit {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  --animate-counter-orbit: counter-orbit 30s linear infinite;
+  @keyframes counter-orbit {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
