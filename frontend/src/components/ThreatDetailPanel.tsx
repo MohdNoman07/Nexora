@@ -9,15 +9,14 @@ interface ThreatDetailPanelProps {
 }
 
 const SEV_CONFIG = {
-  critical: { label: 'Critical', color: '#ff4d4d', bg: 'rgba(255,77,77,0.1)', bar: '#ff4d4d' },
-  high:     { label: 'High',     color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', bar: '#f59e0b' },
-  medium:   { label: 'Medium',   color: '#a78bfa', bg: 'rgba(167,139,250,0.1)', bar: '#a78bfa' },
-  low:      { label: 'Low',      color: '#22d3ee', bg: 'rgba(34,211,238,0.1)', bar: '#22d3ee' },
-  info:     { label: 'Info',     color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', bar: '#94a3b8' },
+  critical: { label: 'Critical', color: '#ef4444', textClass: 'text-rose-600',   bgClass: 'bg-rose-50',   borderClass: 'border-rose-200' },
+  high:     { label: 'High',     color: '#f59e0b', textClass: 'text-amber-600',  bgClass: 'bg-amber-50',  borderClass: 'border-amber-200' },
+  medium:   { label: 'Medium',   color: '#8b5cf6', textClass: 'text-violet-600', bgClass: 'bg-violet-50', borderClass: 'border-violet-200' },
+  low:      { label: 'Low',      color: '#06b6d4', textClass: 'text-cyan-600',   bgClass: 'bg-cyan-50',   borderClass: 'border-cyan-200' },
+  info:     { label: 'Info',     color: '#64748b', textClass: 'text-slate-500',  bgClass: 'bg-slate-50',  borderClass: 'border-slate-200' },
 };
 
 export const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ node, onClose }) => {
-  // Find related threat
   const threat: Threat | undefined = node
     ? ACTIVE_THREATS.find((t) => t.nodeId === node.id) ?? ACTIVE_THREATS[0]
     : undefined;
@@ -31,16 +30,13 @@ export const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ node, onCl
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: 40, scale: 0.97 }}
           transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-          className="glass-strong rounded-2xl overflow-hidden"
-          style={{ width: 300 }}
+          className="bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-2xl overflow-hidden shadow-xl"
+          style={{ width: 300, boxShadow: '0 20px 40px -12px rgba(15,23,42,0.12), 0 0 0 1px rgba(255,255,255,0.9)' }}
         >
           {/* Header */}
           <div className="px-5 pt-5 pb-4">
-            <div className="flex items-start justify-between mb-4">
-              <div
-                className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest"
-                style={{ color: SEV_CONFIG[threat.severity].color }}
-              >
+            <div className="flex items-start justify-between mb-3">
+              <div className={`flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest ${SEV_CONFIG[threat.severity].textClass}`}>
                 <span className="relative flex h-2 w-2">
                   <span
                     className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
@@ -55,41 +51,37 @@ export const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ node, onCl
               </div>
               <button
                 onClick={onClose}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: 'rgba(255,255,255,0.05)' }}
+                className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               >
-                <X size={13} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                <X size={12} />
               </button>
             </div>
 
-            <h3 className="text-base font-semibold text-white mb-1 leading-snug">{threat.title}</h3>
-            <p className="font-mono text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{threat.endpoint}</p>
+            <h3 className="text-[13px] font-semibold text-slate-900 mb-1 leading-snug">{threat.title}</h3>
+            <p className="font-mono text-[11px] text-slate-400">{threat.endpoint}</p>
           </div>
 
           {/* Confidence bar */}
           <div className="px-5 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Confidence</span>
-              <span className="font-mono text-sm font-semibold" style={{ color: SEV_CONFIG[threat.severity].color }}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-slate-400">Confidence</span>
+              <span className={`font-mono text-sm font-bold ${SEV_CONFIG[threat.severity].textClass}`}>
                 {threat.confidence}%
               </span>
             </div>
-            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+            <div className="h-1 rounded-full overflow-hidden bg-slate-100">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${threat.confidence}%` }}
                 transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 className="h-full rounded-full"
-                style={{ background: SEV_CONFIG[threat.severity].bar }}
+                style={{ background: SEV_CONFIG[threat.severity].color }}
               />
             </div>
           </div>
 
           {/* Metadata */}
-          <div
-            className="px-5 py-4 space-y-3"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-          >
+          <div className="px-5 py-4 space-y-2.5 border-t border-slate-100 border-b border-slate-100">
             {[
               { icon: Link,   label: 'Related events', value: String(threat.relatedEvents) },
               { icon: Shield, label: 'Attack chain',   value: threat.attackChain },
@@ -98,10 +90,10 @@ export const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ node, onCl
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Icon size={12} style={{ color: 'rgba(255,255,255,0.3)' }} />
-                  <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+                  <Icon size={11} className="text-slate-300" />
+                  <span className="text-[11px] text-slate-400">{label}</span>
                 </div>
-                <span className="font-mono text-[11px]" style={{ color: 'rgba(255,255,255,0.7)' }}>{value}</span>
+                <span className="font-mono text-[11px] text-slate-700 font-medium">{value}</span>
               </div>
             ))}
           </div>
@@ -111,12 +103,7 @@ export const ThreatDetailPanel: React.FC<ThreatDetailPanelProps> = ({ node, onCl
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all"
-              style={{
-                background: 'linear-gradient(135deg, #1d3a8a 0%, #2d1b69 100%)',
-                border: '1px solid rgba(79,142,247,0.3)',
-                boxShadow: '0 4px 24px rgba(79,142,247,0.2)',
-              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white bg-slate-950 hover:bg-slate-800 transition-colors shadow-sm"
             >
               Investigate
               <ArrowRight size={14} />

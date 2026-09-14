@@ -21,13 +21,13 @@ export const AnimatedStat: React.FC<AnimatedStatProps> = ({
       className="flex flex-col gap-1.5"
     >
       <span
-        className="text-3xl font-bold tracking-tight text-white"
+        className="text-3xl font-bold tracking-tight text-slate-900"
         style={{ fontVariantNumeric: 'tabular-nums' }}
       >
         {display}
       </span>
       <div className="flex items-center gap-2">
-        <span className="text-sm" style={{ color: 'rgba(238,240,245,0.45)' }}>{label}</span>
+        <span className="text-sm text-slate-400">{label}</span>
         <span
           className="text-[11px] font-medium font-mono"
           style={{ color: positive ? 'var(--color-accent-green)' : 'var(--color-accent-red)' }}

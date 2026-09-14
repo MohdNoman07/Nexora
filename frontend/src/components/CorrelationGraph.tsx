@@ -1,280 +1,655 @@
-import React, { useState } from 'react';
+/**
+ * CorrelationGraph — Canvas-based live network graph.
+ *
+ * Renders a force-directed graph with:
+ *  - Ambient idle state (ghost nodes + subtle drift)
+ *  - Dynamic attack chain reveal (nodes/edges fade in progressively)
+ *  - Particle traces flowing along active attack edges
+ *  - Pulsing threat nodes
+ *  - A floating React threat inspector card (NOT on canvas)
+ */
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import type { SimulationState } from '../hooks/useAttackSimulation';
+import type { GraphNodeDef } from '../engine/attackEngine';
 
-const NODE_DATA: Record<string, any> = {
-  threat: {
-    badge: "POTENTIAL THREAT",
-    badgeClass: "bg-rose-50 text-rose-600 border-rose-200",
-    icon: "⚡",
-    title: "Possible SQL Injection",
-    subtitle: "/api/users/search",
-    confidence: "91%",
-    events: "4",
-    chain: "AC-014",
-    firstSeen: "2 min ago"
-  },
-  ip: {
-    badge: "ADVERSARY SOURCE",
-    badgeClass: "bg-indigo-50 text-indigo-600 border-indigo-200",
-    icon: "🌐",
-    title: "External Ingress IP",
-    subtitle: "185.42.91.8 (AS204915)",
-    confidence: "98%",
-    events: "142",
-    chain: "AC-014 / Recon",
-    firstSeen: "48 min ago"
-  },
-  account: {
-    badge: "COMPROMISED IDENTITY",
-    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-    icon: "👤",
-    title: "Elevated Admin Identity",
-    subtitle: "admin@nexora.internal",
-    confidence: "87%",
-    events: "9",
-    chain: "AC-014 / Privilege Escalation",
-    firstSeen: "14 min ago"
-  },
-  endpoint: {
-    badge: "EXPLOITED ENDPOINT",
-    badgeClass: "bg-purple-50 text-purple-600 border-purple-200",
-    icon: "🔌",
-    title: "API Gateway Target",
-    subtitle: "POST /api/users/search",
-    confidence: "95%",
-    events: "12",
-    chain: "AC-014",
-    firstSeen: "5 min ago"
-  },
-  database: {
-    badge: "CRITICAL ASSET AT RISK",
-    badgeClass: "bg-rose-50 text-rose-700 border-rose-300",
-    icon: "🗄️",
-    title: "Customer PII Database (db-1)",
-    subtitle: "PostgreSQL Production Cluster",
-    confidence: "99%",
-    events: "3 (Blocked Reads)",
-    chain: "AC-014 / Exfiltration Risk",
-    firstSeen: "Just now"
-  }
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface CanvasNode {
+  id: string;
+  label: string;
+  sublabel: string;
+  kind: 'peripheral' | 'external_ip' | 'api' | 'user' | 'server' | 'database';
+  // Current position
+  x: number; y: number;
+  // Target position (lerp toward this)
+  tx: number; ty: number;
+  // Animation
+  opacity: number;    // 0 → 1 on appear
+  pulse: number;      // 0..2π oscillates
+  pulseAmp: number;   // glow intensity
+  radius: number;
+  // Status
+  status: 'peripheral' | 'normal' | 'suspicious' | 'threat';
+}
+
+interface Particle {
+  t: number;          // 0..1 position along bezier
+  speed: number;      // t-units per second
+  opacity: number;
+}
+
+interface CanvasEdge {
+  fromId: string;
+  toId: string;
+  status: 'quiet' | 'suspicious' | 'attack';
+  opacity: number;
+  dashOffset: number;
+  particles: Particle[];
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const NODE_COLORS: Record<string, string> = {
+  peripheral:  '#94a3b8',
+  external_ip: '#4f46e5',
+  api:         '#8b5cf6',
+  user:        '#3b82f6',
+  server:      '#10b981',
+  database:    '#ef4444',
 };
 
-export const CorrelationGraph: React.FC = () => {
-  const [activeNode, setActiveNode] = useState<string>('threat');
-  const [activeView, setActiveView] = useState('all');
+const NODE_ABBR: Record<string, string> = {
+  peripheral:  '○',
+  external_ip: 'IP',
+  api:         'API',
+  user:        'USR',
+  server:      'SRV',
+  database:    'DB',
+};
 
-  const data = NODE_DATA[activeNode];
+// Ghost/ambient peripheral nodes always present in the graph
+const PERIPHERAL_DEFS = [
+  { id: 'p-firewall',   label: 'Firewall',    sublabel: 'Edge security', kind: 'peripheral' as const },
+  { id: 'p-workstation',label: 'Workstation', sublabel: 'Internal host', kind: 'peripheral' as const },
+  { id: 'p-cloud',      label: 'Cloud CDN',   sublabel: 'AWS us-east-1', kind: 'peripheral' as const },
+  { id: 'p-gateway',    label: 'API Gateway', sublabel: 'Load balancer', kind: 'peripheral' as const },
+  { id: 'p-server',     label: 'Auth Server', sublabel: 'Identity svc',  kind: 'peripheral' as const },
+];
+
+// Quiet ambient edges between peripheral nodes (show idle activity)
+const AMBIENT_EDGE_PAIRS = [
+  ['p-firewall', 'p-gateway'],
+  ['p-gateway',  'p-server'],
+  ['p-server',   'p-workstation'],
+  ['p-workstation', 'p-cloud'],
+];
+
+// ── Zone positions for each node type (normalized -0.5..0.5 relative to canvas center) ──
+function getZoneTarget(kind: string, index: number, w: number, h: number): { tx: number, ty: number } {
+  const cx = w / 2, cy = h / 2;
+  const jitter = () => (Math.random() - 0.5) * 60;
+  switch (kind) {
+    case 'external_ip': return { tx: cx - 160 + jitter(), ty: cy - 140 + jitter() };
+    case 'api':         return { tx: cx + 40  + index * 30 + jitter(), ty: cy - 100 + jitter() };
+    case 'user':        return { tx: cx - 100 + jitter(), ty: cy + 20 + jitter() };
+    case 'server':      return { tx: cx + 80  + jitter(), ty: cy + 60 + jitter() };
+    case 'database':    return { tx: cx + 160 + jitter(), ty: cy + 130 + jitter() };
+    case 'peripheral':  {
+      const angles = [0.3, 1.1, 2.0, 2.9, 4.2];
+      const angle  = angles[index % angles.length];
+      const r      = Math.min(w, h) * 0.38;
+      return { tx: cx + Math.cos(angle) * r * (0.8 + Math.random() * 0.4), ty: cy + Math.sin(angle) * r * 0.65 };
+    }
+    default: return { tx: cx + jitter(), ty: cy + jitter() };
+  }
+}
+
+// ── Bezier helper ─────────────────────────────────────────────────────────────
+
+function bezierPoint(x1: number, y1: number, x2: number, y2: number, t: number) {
+  const mx = (x1 + x2) / 2 + (y2 - y1) * 0.2;
+  const my = (y1 + y2) / 2 - (x2 - x1) * 0.2;
+  const s  = 1 - t;
+  return {
+    x: s * s * x1 + 2 * s * t * mx + t * t * x2,
+    y: s * s * y1 + 2 * s * t * my + t * t * y2,
+  };
+}
+
+// ── Component Props ───────────────────────────────────────────────────────────
+
+interface Props {
+  simulationState?: SimulationState;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export const CorrelationGraph: React.FC<Props> = ({ simulationState }) => {
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Animation data in refs — never trigger re-renders
+  const nodesRef   = useRef<CanvasNode[]>([]);
+  const edgesRef   = useRef<CanvasEdge[]>([]);
+  const rafRef     = useRef<number>(0);
+  const lastTsRef  = useRef<number>(0);
+  const sizeRef    = useRef({ w: 0, h: 0 });
+  const timeRef    = useRef(0); // global clock for idle drift
+
+  // Active threat inspector node id (for the floating card)
+  const [inspectorNodeId, setInspectorNodeId] = useState<string>('');
+  const [inspectorPos, setInspectorPos]       = useState<{ x: number, y: number }>({ x: 0, y: 0 });
+
+  // ── Initialize peripheral nodes ──────────────────────────────────────────────
+  const initPeripheralNodes = useCallback((w: number, h: number) => {
+    const nodes: CanvasNode[] = PERIPHERAL_DEFS.map((def, i) => {
+      const { tx, ty } = getZoneTarget('peripheral', i, w, h);
+      return {
+        id: def.id, label: def.label, sublabel: def.sublabel, kind: 'peripheral',
+        x: tx + (Math.random() - 0.5) * 100, y: ty + (Math.random() - 0.5) * 100,
+        tx, ty, opacity: 0, pulse: Math.random() * Math.PI * 2,
+        pulseAmp: 0, radius: 14, status: 'peripheral',
+      };
+    });
+    nodesRef.current = nodes;
+
+    const edges: CanvasEdge[] = AMBIENT_EDGE_PAIRS.map(([a, b]) => ({
+      fromId: a, toId: b, status: 'quiet', opacity: 0, dashOffset: 0, particles: [],
+    }));
+    edgesRef.current = edges;
+  }, []);
+
+  // ── React to simulationState changes ────────────────────────────────────────
+  useEffect(() => {
+    if (!simulationState) return;
+    const { phase, chainNodes, revealedEdgeCount, activeNodeIds, threatNodeId } = simulationState;
+    const { w, h } = sizeRef.current;
+    if (w === 0 || h === 0) return;
+
+    if (phase === 'idle') {
+      // Remove all chain nodes, revert edges
+      nodesRef.current = nodesRef.current.filter(n => n.kind === 'peripheral');
+      edgesRef.current = edgesRef.current.filter(e =>
+        AMBIENT_EDGE_PAIRS.some(([a, b]) => e.fromId === a && e.toId === b)
+      );
+      edgesRef.current.forEach(e => { e.status = 'quiet'; e.particles = []; });
+      return;
+    }
+
+    // ── Upsert chain nodes ──
+    const apiCount: Record<string, number> = {};
+    chainNodes.forEach((def, i) => {
+      const existing = nodesRef.current.find(n => n.id === def.id);
+      const idx = apiCount[def.type] ?? 0;
+      apiCount[def.type] = idx + 1;
+
+      const status: CanvasNode['status'] = def.id === threatNodeId ? 'threat'
+        : activeNodeIds.has(def.id) ? 'suspicious'
+        : i <= revealedEdgeCount ? 'normal'
+        : 'peripheral';
+
+      if (existing) {
+        existing.status   = status;
+        existing.pulseAmp = status === 'threat' ? 1.0 : status === 'suspicious' ? 0.5 : 0;
+      } else {
+        const { tx, ty } = getZoneTarget(def.type, idx, w, h);
+        const node: CanvasNode = {
+          id: def.id, label: def.label, sublabel: def.sublabel,
+          kind: def.type as CanvasNode['kind'],
+          x: w / 2, y: h / 2,  // start from center, fly to target
+          tx, ty,
+          opacity: 0,
+          pulse: Math.random() * Math.PI * 2,
+          pulseAmp: status === 'threat' ? 1.0 : status === 'suspicious' ? 0.5 : 0,
+          radius: def.type === 'external_ip' || def.type === 'database' ? 24 : 20,
+          status,
+        };
+        nodesRef.current.push(node);
+      }
+    });
+
+    // ── Upsert chain edges ──
+    const visibleChain = chainNodes.slice(0, revealedEdgeCount + 1);
+    for (let i = 0; i < visibleChain.length - 1; i++) {
+      const fromId = visibleChain[i].id;
+      const toId   = visibleChain[i + 1].id;
+      let edge = edgesRef.current.find(e => e.fromId === fromId && e.toId === toId);
+
+      const edgeStatus: CanvasEdge['status'] =
+        phase === 'resolved' || phase === 'escalating' ? 'attack' : 'suspicious';
+
+      if (edge) {
+        edge.status = edgeStatus;
+        if (edge.particles.length === 0 && edgeStatus === 'attack') {
+          edge.particles = Array.from({ length: 4 }, (_, k) => ({
+            t: k / 4, speed: 0.18 + Math.random() * 0.08, opacity: 0.85,
+          }));
+        }
+      } else {
+        const newEdge: CanvasEdge = {
+          fromId, toId, status: edgeStatus, opacity: 0, dashOffset: 0,
+          particles: edgeStatus === 'attack' ? Array.from({ length: 4 }, (_, k) => ({
+            t: k / 4, speed: 0.18 + Math.random() * 0.08, opacity: 0.85,
+          })) : [],
+        };
+        edgesRef.current.push(newEdge);
+      }
+    }
+
+    // Update inspector
+    if (threatNodeId) {
+      setInspectorNodeId(threatNodeId);
+    }
+
+  }, [simulationState]);
+
+  // ── Canvas draw loop ─────────────────────────────────────────────────────────
+  const drawLoop = useCallback((ts: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx   = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dt = Math.min((ts - lastTsRef.current) / 1000, 0.05); // cap at 50ms
+    lastTsRef.current = ts;
+    timeRef.current  += dt;
+    const t = timeRef.current;
+
+    const { w, h } = sizeRef.current;
+    ctx.clearRect(0, 0, w, h);
+
+    const nodes = nodesRef.current;
+    const edges = edgesRef.current;
+
+    // ── 1. Draw circular grid ──
+    ctx.save();
+    const cx = w / 2, cy = h / 2;
+    for (let r = 40; r < Math.max(w, h); r += 80) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * 1.6, r * 0.9, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(148,163,184,${0.05 + (r % 160 === 0 ? 0.03 : 0)})`;
+      ctx.lineWidth   = 0.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── 2. Lerp nodes toward targets + idle drift ──
+    nodes.forEach(node => {
+      const lerpSpeed = 2.5;
+      node.x += (node.tx - node.x) * lerpSpeed * dt;
+      node.y += (node.ty - node.y) * lerpSpeed * dt;
+
+      // Idle drift for peripheral / non-active nodes
+      if (node.status === 'peripheral' || node.status === 'normal') {
+        node.x += Math.sin(t * 0.4 + node.pulse) * 0.3;
+        node.y += Math.cos(t * 0.3 + node.pulse * 1.3) * 0.2;
+      }
+
+      // Fade in
+      node.opacity = Math.min(node.opacity + dt * (node.status === 'peripheral' ? 0.6 : 1.5), 1);
+
+      // Pulse oscillation
+      node.pulse += dt * (node.status === 'threat' ? 2.2 : node.status === 'suspicious' ? 1.4 : 0.5);
+    });
+
+    // ── 3. Build node position map ──
+    const posMap = new Map(nodes.map(n => [n.id, { x: n.x, y: n.y }]));
+
+    // ── 4. Draw edges ──
+    edges.forEach(edge => {
+      const from = posMap.get(edge.fromId);
+      const to   = posMap.get(edge.toId);
+      if (!from || !to) return;
+
+      edge.opacity = Math.min(edge.opacity + dt * 1.0, 1);
+      edge.dashOffset -= dt * (edge.status === 'attack' ? 60 : edge.status === 'suspicious' ? 35 : 0);
+
+      const mx = (from.x + to.x) / 2 + (to.y - from.y) * 0.2;
+      const my = (from.y + to.y) / 2 - (to.x - from.x) * 0.2;
+
+      ctx.save();
+      ctx.globalAlpha = edge.opacity * (edge.status === 'quiet' ? 0.2 : edge.status === 'suspicious' ? 0.55 : 0.85);
+
+      if (edge.status === 'attack') {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth   = 2.2;
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = edge.dashOffset;
+        ctx.shadowColor = 'rgba(239,68,68,0.5)';
+        ctx.shadowBlur  = 8;
+      } else if (edge.status === 'suspicious') {
+        ctx.strokeStyle = '#8b5cf6';
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([5, 5]);
+        ctx.lineDashOffset = edge.dashOffset;
+        ctx.shadowColor = 'rgba(139,92,246,0.3)';
+        ctx.shadowBlur  = 5;
+      } else {
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([2, 4]);
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.quadraticCurveTo(mx, my, to.x, to.y);
+      ctx.stroke();
+      ctx.restore();
+
+      // ── 5. Draw arrowhead for attack edges ──
+      if (edge.status === 'attack') {
+        const pt  = bezierPoint(from.x, from.y, to.x, to.y, 0.92);
+        const pt2 = bezierPoint(from.x, from.y, to.x, to.y, 0.98);
+        const angle = Math.atan2(pt2.y - pt.y, pt2.x - pt.x);
+        ctx.save();
+        ctx.translate(pt2.x, pt2.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-8, -4);
+        ctx.lineTo(-8, 4);
+        ctx.closePath();
+        ctx.fillStyle   = '#ef4444';
+        ctx.globalAlpha = 0.8;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── 6. Animate particles ──
+      edge.particles.forEach(p => {
+        p.t = (p.t + p.speed * dt) % 1;
+        const pt = bezierPoint(from.x, from.y, to.x, to.y, p.t);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+        const baseColor = edge.status === 'attack' ? '239,68,68' : '139,92,246';
+        ctx.fillStyle   = `rgba(${baseColor},${p.opacity * edge.opacity})`;
+        ctx.shadowColor = `rgba(${baseColor},0.7)`;
+        ctx.shadowBlur  = 8;
+        ctx.fill();
+        ctx.restore();
+      });
+    });
+
+    // ── 7. Draw nodes ──
+    nodes.forEach(node => {
+      if (node.opacity < 0.01) return;
+      const { x, y, radius, kind, status, pulse, pulseAmp, opacity } = node;
+      const color = NODE_COLORS[kind] ?? '#94a3b8';
+      const isPeripheral = status === 'peripheral';
+
+      ctx.save();
+      ctx.globalAlpha = opacity * (isPeripheral ? 0.35 : 1);
+
+      // Glow ring for threat/suspicious
+      if (pulseAmp > 0) {
+        const pulseScale = 1 + Math.sin(pulse) * 0.35 * pulseAmp;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 1.8 * pulseScale, 0, Math.PI * 2);
+        ctx.fillStyle   = color;
+        ctx.globalAlpha = opacity * pulseAmp * 0.15 * (0.5 + 0.5 * Math.sin(pulse));
+        ctx.shadowColor = color;
+        ctx.shadowBlur  = 20;
+        ctx.fill();
+        ctx.globalAlpha = opacity * (isPeripheral ? 0.35 : 1);
+        ctx.shadowBlur  = 0;
+      }
+
+      // Node body
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+      if (isPeripheral) {
+        ctx.fillStyle   = 'rgba(255,255,255,0.7)';
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth   = 1;
+      } else if (status === 'threat') {
+        ctx.fillStyle   = '#ef4444';
+        ctx.shadowColor = 'rgba(239,68,68,0.6)';
+        ctx.shadowBlur  = 20 + Math.sin(pulse) * 12;
+      } else if (status === 'suspicious') {
+        ctx.fillStyle   = color;
+        ctx.shadowColor = `${color}88`;
+        ctx.shadowBlur  = 10 + Math.sin(pulse) * 5;
+      } else {
+        ctx.fillStyle   = color;
+        ctx.shadowColor = `${color}44`;
+        ctx.shadowBlur  = 6;
+      }
+
+      ctx.fill();
+
+      if (!isPeripheral) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+      } else {
+        ctx.stroke();
+      }
+
+      ctx.shadowBlur = 0;
+
+      // ── Abbreviation text inside node ──
+      if (!isPeripheral) {
+        ctx.fillStyle  = 'white';
+        ctx.font       = `600 ${kind === 'api' ? 8 : 10}px "JetBrains Mono", monospace`;
+        ctx.textAlign  = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(NODE_ABBR[kind] ?? '?', x, y);
+      } else {
+        // Tiny dot for peripheral
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fill();
+      }
+
+      // ── Label below node ──
+      const labelOpacity = isPeripheral ? 0.4 : 1;
+      ctx.globalAlpha = opacity * labelOpacity;
+      ctx.fillStyle   = isPeripheral ? '#94a3b8' : '#334155';
+      ctx.font        = `500 ${isPeripheral ? 9 : 10}px "JetBrains Mono", monospace`;
+      ctx.textAlign   = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(node.label, x, y + radius + 6);
+
+      if (!isPeripheral && node.sublabel) {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font      = '400 9px "JetBrains Mono", monospace';
+        ctx.fillText(node.sublabel, x, y + radius + 18);
+      }
+
+      ctx.restore();
+    });
+
+    rafRef.current = requestAnimationFrame(drawLoop);
+  }, []);
+
+  // ── Resize observer ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas  = canvasRef.current;
+    const wrapper = wrapperRef.current;
+    if (!canvas || !wrapper) return;
+
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      canvas.width  = width  * devicePixelRatio;
+      canvas.height = height * devicePixelRatio;
+      canvas.style.width  = `${width}px`;
+      canvas.style.height = `${height}px`;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(devicePixelRatio, devicePixelRatio);
+      sizeRef.current = { w: width, h: height };
+      initPeripheralNodes(width, height);
+    });
+
+    ro.observe(wrapper);
+
+    rafRef.current = requestAnimationFrame(drawLoop);
+
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [drawLoop, initPeripheralNodes]);
+
+  // Fade in peripheral nodes after a short delay
+  useEffect(() => {
+    const t = setTimeout(() => {
+      nodesRef.current.forEach(n => { if (n.kind === 'peripheral') n.opacity = 0; });
+    }, 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  // ── Inspector card position (from canvas node position) ──
+  useEffect(() => {
+    if (!inspectorNodeId) return;
+    const node = nodesRef.current.find(n => n.id === inspectorNodeId);
+    if (node) {
+      setInspectorPos({ x: node.x, y: node.y });
+    }
+  });
+
+  const sim = simulationState;
+  const phase = sim?.phase ?? 'idle';
+  const isActive = phase !== 'idle';
 
   return (
-    <section aria-label="Visual Threat Correlation Centerpiece" className="relative rounded-3xl border border-slate-200/80 bg-white/70 backdrop-blur-md p-6 overflow-hidden" style={{ boxShadow: 'var(--shadow-glass)' }}>
-      {/* Graph Filter Layer Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 relative z-20">
+    <div className="relative w-full" style={{ minHeight: 520 }}>
+      {/* ── View Filter tabs ── */}
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-4 py-3 mb-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 mr-2">Views:</span>
-          {['all', 'threat', 'identities'].map(v => (
-            <button 
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mr-1">Views:</span>
+          {['All Correlated Entities', 'Active Attack Vector', 'Identity & Credential Path'].map((v, i) => (
+            <button
               key={v}
-              onClick={() => setActiveView(v)}
-              className={`px-3 py-1 text-xs rounded-full font-medium shadow-sm transition ${activeView === v ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all ${
+                i === 0
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100/80 text-slate-500 hover:bg-slate-200/80 hover:text-slate-700'
+              }`}
             >
-              {v === 'all' ? 'All Correlated Entities' : v === 'threat' ? 'Active Attack Vector (AC-014)' : 'Identity & Credential Path'}
+              {v}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-4 text-xs font-mono text-slate-400">
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Threat Incursion</span>
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-500"></span> Identity</span>
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Network/IP</span>
+        <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400">
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />Threat</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />Suspicious</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Ambient</span>
         </div>
       </div>
 
-      {/* SVG Topology & Interactive Graph Canvas */}
-      <div className="relative w-full h-[470px] flex items-center justify-center overflow-hidden">
-        
-        {/* Translucent Watermark / Topology Grid */}
-        <div className="absolute inset-0 flex items-center justify-start pointer-events-none opacity-25">
-          <svg className="w-96 h-96 -translate-x-12 stroke-slate-300" fill="none" strokeWidth="0.5" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="45" strokeDasharray="2 2"></circle>
-            <circle cx="50" cy="50" r="32"></circle>
-            <circle cx="50" cy="50" r="18" strokeDasharray="1 3"></circle>
-            <ellipse cx="50" cy="50" rx="45" ry="16"></ellipse>
-            <ellipse cx="50" cy="50" rx="16" ry="45"></ellipse>
-          </svg>
-          <span className="absolute bottom-6 left-6 font-serif italic text-sm text-slate-400">
-            A clearer view of a safer world.
-          </span>
-        </div>
+      {/* ── Canvas ── */}
+      <div ref={wrapperRef} className="relative w-full" style={{ height: 460 }}>
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ cursor: 'default' }}
+        />
 
-        {/* Main SVG Attack Flow Connections */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" fill="none" viewBox="0 0 1000 500">
-          <defs>
-            <linearGradient id="grad-threat-flow" x1="0%" x2="100%" y1="0%" y2="100%">
-              <stop offset="0%" stopColor="#8b5cf6"></stop>
-              <stop offset="50%" stopColor="#ef4444"></stop>
-              <stop offset="100%" stopColor="#f43f5e"></stop>
-            </linearGradient>
-          </defs>
-          
-          <path d="M 680,80 L 510,120" stroke="#cbd5e1" strokeDasharray="3 3" strokeWidth="1.2"></path>
-          <path d="M 680,80 L 660,160" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 660,160 L 590,265" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 430,200 L 460,250" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 400,330 L 460,250" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 760,350 L 665,300" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 665,300 L 590,265" stroke="#cbd5e1" strokeWidth="1.2"></path>
-          <path d="M 460,250 L 510,120" stroke="#cbd5e1" strokeDasharray="2 2" strokeWidth="1.2"></path>
-
-          <path className="attack-path-active" d="M 500,135 Q 520,185 540,205" fill="none" stroke="url(#grad-threat-flow)" strokeWidth="3"></path>
-          <path className="attack-path-active" d="M 470,255 C 500,245 520,230 535,215" fill="none" stroke="#ef4444" strokeWidth="2.5"></path>
-          <path className="attack-path-active" d="M 560,225 Q 580,240 595,260" fill="none" stroke="#ef4444" strokeWidth="3"></path>
-          <path className="attack-path-active" d="M 605,285 Q 630,320 665,315" fill="none" stroke="url(#grad-threat-flow)" strokeWidth="3.5"></path>
-        </svg>
-
-        {/* Nodes */}
-        <div className="absolute top-[80px] left-[460px] flex items-center gap-3 cursor-pointer group node-transition" onClick={() => setActiveNode('ip')}>
-          <div className="relative">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform" style={{ boxShadow: 'var(--shadow-glow-blue)' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
-            </div>
-          </div>
-          <div>
-            <div className="text-[11px] font-semibold text-slate-400 tracking-wide uppercase">External IP</div>
-            <div className="font-mono text-xs font-semibold text-slate-800">185.42.91.8</div>
-          </div>
-        </div>
-
-        <div className="absolute top-[215px] left-[380px] flex items-center gap-3 cursor-pointer group node-transition" onClick={() => setActiveNode('account')}>
-          <div className="relative">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 border border-blue-400 flex items-center justify-center text-white group-hover:scale-110 transition-transform" style={{ boxShadow: 'var(--shadow-glow-blue)' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-900">admin</div>
-            <div className="text-[10px] text-slate-400 font-medium">User Account (Elevated)</div>
-          </div>
-        </div>
-
-        <div className="absolute top-[170px] left-[515px] flex items-center gap-3 cursor-pointer group z-20 node-transition" onClick={() => setActiveNode('threat')}>
-          <div className="relative">
-            <div className="absolute -inset-3 bg-red-500/25 rounded-full blur-md animate-pulse-glow"></div>
-            <div className="w-14 h-14 rounded-full bg-rose-600 border-2 border-white flex items-center justify-center text-white group-hover:scale-110 transition-transform relative z-10" style={{ boxShadow: 'var(--shadow-glow-red)' }}>
-              <svg className="w-6 h-6 animate-bounce" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
-            </div>
-          </div>
-          <div className="bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-red-200 shadow-sm">
-            <div className="text-xs font-bold text-rose-700 font-mono">/api/login</div>
-            <div className="text-[10px] text-rose-600 font-medium">47 failed attempts</div>
-          </div>
-        </div>
-
-        <div className="absolute top-[230px] left-[565px] flex items-center gap-3 cursor-pointer group node-transition" onClick={() => setActiveNode('endpoint')}>
-          <div className="relative">
-            <div className="w-11 h-11 rounded-2xl bg-violet-600 border border-violet-400 flex items-center justify-center text-white group-hover:scale-110 transition-transform" style={{ boxShadow: 'var(--shadow-glow-purple)' }}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"></path></svg>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-800 font-mono">/api/users</div>
-            <div className="text-[10px] text-slate-400">Suspicious SQL query</div>
-          </div>
-        </div>
-
-        <div className="absolute top-[280px] left-[640px] flex items-center gap-3 cursor-pointer group node-transition" onClick={() => setActiveNode('database')}>
-          <div className="relative">
-            <div className="absolute -inset-2 bg-rose-500/20 rounded-full blur-sm"></div>
-            <div className="w-12 h-12 rounded-2xl bg-rose-700 border border-rose-400 flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform relative z-10">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-900 font-mono">db-1</div>
-            <div className="text-[10px] font-semibold text-rose-600">Sensitive Data Exfil Risk</div>
-          </div>
-        </div>
-
-        {/* Peripheral context */}
-        <div className="absolute top-[40px] right-[240px] flex items-center gap-2 opacity-50 text-slate-400 text-xs">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
-          <span>Firewall</span>
-        </div>
-        <div className="absolute top-[130px] right-[180px] flex items-center gap-2 opacity-50 text-slate-400 text-xs">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect height="12" rx="2" width="18" x="3" y="4"></rect><line x1="2" x2="22" y1="20" y2="20"></line></svg></div>
-          <span>Workstation</span>
-        </div>
-        <div className="absolute bottom-[80px] right-[150px] flex items-center gap-2 opacity-50 text-slate-400 text-xs">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg></div>
-          <span>Cloud VPC</span>
-        </div>
-        <div className="absolute bottom-[70px] left-[350px] flex items-center gap-2 opacity-50 text-slate-400 text-xs">
-          <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg></div>
-          <span>API Gateway</span>
-        </div>
-
-        {/* Floating Threat Inspector Card */}
-        {data && (
-          <div className="absolute top-8 right-6 w-80 bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl p-5 shadow-2xl transition-all duration-300 z-30 ring-2 ring-transparent">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border ${data.badgeClass}`}>
-                {activeNode === 'threat' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>}
-                {data.badge}
+        {/* ── Floating Threat Inspector Card (React, not canvas) ── */}
+        {sim?.threatInfo && (phase === 'escalating' || phase === 'resolved') && (
+          <div
+            className="absolute top-5 right-5 w-72 bg-white/96 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl z-30 overflow-hidden"
+            style={{ animation: 'fadeSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-widest uppercase border
+                ${sim.threatInfo.badgeColor === 'rose'   ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                  sim.threatInfo.badgeColor === 'amber'  ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                  sim.threatInfo.badgeColor === 'violet' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+                  'bg-indigo-50 text-indigo-600 border-indigo-200'}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping inline-block" />
+                {sim.threatInfo.badge}
               </span>
-              <button className="text-slate-400 hover:text-slate-600 text-xs" title="Expand View">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" x2="14" y1="3" y2="10"></line><line x1="3" x2="10" y1="21" y2="14"></line></svg>
+              <button className="text-slate-400 hover:text-slate-600 transition">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
               </button>
             </div>
-            
-            <div className="mt-3.5">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs">
-                  {data.icon}
+
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-5 h-5 rounded-full bg-slate-900 flex items-center justify-center text-[9px] text-white font-bold">!</div>
+                <h2 className="font-bold text-[13px] text-slate-900">{sim.threatInfo.title}</h2>
+              </div>
+              <p className="font-mono text-[10px] text-slate-500 pl-7">{sim.threatInfo.subtitle}</p>
+            </div>
+
+            <div className="px-4 pb-3 space-y-2 border-t border-slate-100 pt-3">
+              {[
+                { label: 'Confidence',     value: `${sim.threatInfo.confidence}%`,       cls: 'font-bold text-rose-600 font-mono' },
+                { label: 'Related events', value: String(sim.threatInfo.relatedEvents),  cls: 'font-semibold text-slate-700 font-mono' },
+                { label: 'Attack chain',   value: sim.threatInfo.chain,                  cls: 'text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-[10px] font-mono' },
+                { label: 'First seen',     value: sim.threatInfo.firstSeen,              cls: 'text-slate-600 font-mono text-[11px]' },
+              ].map(({ label, value, cls }) => (
+                <div key={label} className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-500">{label}</span>
+                  <span className={cls}>{value}</span>
                 </div>
-                <h2 className="font-bold text-base text-slate-900 leading-tight">
-                  {data.title}
-                </h2>
-              </div>
-              <p className="font-mono text-xs text-slate-500 mt-1 pl-8">
-                {data.subtitle}
-              </p>
+              ))}
             </div>
 
-            <div className="mt-4 space-y-2 text-xs border-t border-slate-100 pt-3">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 flex items-center gap-1.5"><svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>Confidence</span>
-                <span className="font-bold font-mono text-rose-600">{data.confidence}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 flex items-center gap-1.5"><svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>Related events</span>
-                <span className="font-mono text-slate-700 font-semibold">{data.events}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 flex items-center gap-1.5"><svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"></line></svg>Attack chain</span>
-                <span className="font-mono text-indigo-600 font-medium bg-indigo-50 px-1.5 py-0.5 rounded">{data.chain}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 flex items-center gap-1.5"><svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>First seen</span>
-                <span className="font-mono text-slate-600">{data.firstSeen}</span>
-              </div>
-            </div>
-
-            <div className="mt-5 pt-3 border-t border-slate-100 flex gap-2">
-              <button className="flex-1 bg-slate-950 hover:bg-slate-800 text-white text-xs font-semibold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 shadow-sm transition">
-                <span>Investigate Chain</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+            <div className="px-4 pb-4 pt-2 border-t border-slate-100 flex gap-2">
+              <button className="flex-1 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-semibold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition">
+                Investigate
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
               </button>
-              <button className="px-2.5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition" title="Mitigate / Block">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"></line></svg>
+              <button className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
               </button>
             </div>
           </div>
         )}
 
-        {/* Stage Steps Indicators */}
-        <div className="absolute right-6 bottom-4 flex flex-col gap-2 text-[10px] font-mono font-medium text-slate-400">
-          <span className="hover:text-slate-800 transition cursor-pointer">01 DETECT</span>
-          <span className="hover:text-slate-800 transition cursor-pointer text-indigo-600 font-bold">02 CORRELATE</span>
-          <span className="hover:text-slate-800 transition cursor-pointer">03 PREVENT</span>
+        {/* ── Step indicators ── */}
+        <div className="absolute right-0 bottom-4 flex flex-col gap-3 text-[9px] font-mono font-semibold tracking-widest select-none">
+          {[['01', 'DETECT'], ['02', 'CORRELATE'], ['03', 'PREVENT']].map(([n, label], i) => {
+            const active =
+              (i === 0 && (phase === 'detecting' || phase === 'correlating' || phase === 'escalating' || phase === 'resolved')) ||
+              (i === 1 && (phase === 'correlating' || phase === 'escalating' || phase === 'resolved')) ||
+              (i === 2 && phase === 'resolved');
+            return (
+              <span key={n} className={`cursor-default transition-colors text-right ${active ? 'text-indigo-500' : 'text-slate-300'}`}>
+                {n}<br/>{label}
+              </span>
+            );
+          })}
         </div>
+
+        {/* ── Idle ambient label ── */}
+        {!isActive && (
+          <div className="absolute bottom-8 left-48 pointer-events-none z-10">
+            <p className="font-serif italic text-[13px] text-slate-400 leading-tight">
+              A clearer view<br />of a safer world.
+            </p>
+            <div className="w-5 h-px bg-slate-300 mt-1.5" />
+          </div>
+        )}
+
+        {/* ── Attack phase status pill ── */}
+        {isActive && phase !== 'resolved' && (
+          <div className="absolute bottom-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-full border border-slate-200 shadow-sm">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+            </span>
+            <span className="text-[10px] font-mono font-semibold text-slate-600 uppercase tracking-widest">
+              {phase === 'detecting' ? 'Detecting…' : phase === 'correlating' ? 'Correlating…' : 'Escalating…'}
+            </span>
+          </div>
+        )}
       </div>
-    </section>
+
+      <style>{`
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
   );
 };
+
+export default CorrelationGraph;

@@ -1,140 +1,114 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { CorrelationGraph } from '../../components/CorrelationGraph';
-import { ThreatDetailPanel } from '../../components/ThreatDetailPanel';
-import { GRAPH_NODES, GRAPH_EDGES, ACTIVE_THREATS, type GraphNode } from '../../data/mockData';
-import { Filter, Maximize2 } from 'lucide-react';
+import { ACTIVE_THREATS } from '../../data/mockData';
+import { Filter, Globe, User, Zap, Server, Database } from 'lucide-react';
 
-const FILTER_TYPES = ['All', 'IP', 'User', 'API', 'Server', 'Database'];
+const FILTER_TYPES = [
+  { name: 'All Entities', icon: Globe },
+  { name: 'IP Addresses', icon: Globe },
+  { name: 'Users', icon: User },
+  { name: 'APIs', icon: Zap },
+  { name: 'Servers', icon: Server },
+  { name: 'Databases', icon: Database },
+];
 
 const CorrelationPage: React.FC = () => {
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [activeFilter, setActiveFilter] = useState('All');
-
-  const filteredNodes = activeFilter === 'All'
-    ? GRAPH_NODES
-    : GRAPH_NODES.filter((n) => n.type === activeFilter.toLowerCase());
-
-  const handleNodeClick = useCallback((node: GraphNode | null) => {
-    setSelectedNode(node?.threat ? node : null);
-  }, []);
+  const [activeFilter, setActiveFilter] = useState('All Entities');
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Sidebar filters */}
-      <div
-        className="flex flex-col flex-shrink-0 p-5 overflow-y-auto"
-        style={{
-          width: 220,
-          borderRight: '1px solid rgba(255,255,255,0.05)',
-          background: 'rgba(8,9,11,0.6)',
-        }}
-      >
-        <div className="mb-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter size={13} style={{ color: 'rgba(255,255,255,0.35)' }} />
-            <span className="text-[11px] uppercase tracking-widest font-mono" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              Filter
-            </span>
-          </div>
-          <div className="space-y-1">
-            {FILTER_TYPES.map((f) => (
-              <button
-                key={f}
-                onClick={() => setActiveFilter(f)}
-                className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition-all"
-                style={{
-                  background: activeFilter === f ? 'rgba(79,142,247,0.12)' : 'transparent',
-                  color: activeFilter === f ? '#4f8ef7' : 'rgba(255,255,255,0.4)',
-                  borderLeft: activeFilter === f ? '2px solid #4f8ef7' : '2px solid transparent',
-                }}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Threat list */}
+    <div className="px-8 py-8 space-y-6 max-w-[1440px] mx-auto">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            Active Threats
-          </div>
-          <div className="space-y-2">
-            {ACTIVE_THREATS.map((t) => (
-              <motion.div
-                key={t.id}
-                whileHover={{ x: 2 }}
-                onClick={() => {
-                  const node = GRAPH_NODES.find((n) => n.id === t.nodeId);
-                  setSelectedNode(node ?? null);
-                }}
-                className="px-3 py-2.5 rounded-xl cursor-pointer transition-all"
-                style={{
-                  background: 'rgba(255,77,77,0.06)',
-                  border: '1px solid rgba(255,77,77,0.14)',
-                }}
-              >
-                <div className="text-[11px] font-medium text-white mb-0.5 truncate">{t.title}</div>
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    {t.endpoint}
-                  </span>
-                  <span className="font-mono text-[10px]" style={{ color: '#ff4d4d' }}>{t.confidence}%</span>
-                </div>
-              </motion.div>
-            ))}
+          <span className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-semibold">
+            Threat Intelligence & Graph Analysis
+          </span>
+          <h1 className="text-3xl font-serif italic text-slate-900 font-normal mt-1">
+            Event Correlation Topology
+          </h1>
+          <p className="text-xs text-slate-500 max-w-xl mt-1">
+            Real-time visual map linking ingress vectors, compromised credentials, target API endpoints, and sensitive database assets across active attack chains.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-white/80 border border-slate-200 rounded-2xl px-4 py-2 flex items-center gap-3 text-xs shadow-sm">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+            </span>
+            <span className="font-semibold text-slate-700">3 Active Correlations</span>
           </div>
         </div>
       </div>
 
-      {/* Graph area */}
-      <div className="flex-1 relative overflow-hidden">
-        {/* Header */}
-        <div
-          className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-6 py-3"
-          style={{ background: 'linear-gradient(to bottom, rgba(8,9,11,0.95) 0%, transparent 100%)' }}
-        >
-          <div>
-            <h1 className="text-lg font-bold text-white">Correlation Graph</h1>
-            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {filteredNodes.length} nodes · {GRAPH_EDGES.length} edges · {ACTIVE_THREATS.length} threats
-            </p>
-          </div>
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] transition-colors"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
-            <Maximize2 size={11} /> Fullscreen
-          </button>
-        </div>
-
-        <CorrelationGraph
-          nodes={filteredNodes}
-          edges={GRAPH_EDGES}
-          onNodeClick={handleNodeClick}
-          selectedNodeId={selectedNode?.id}
-        />
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 mr-2 flex items-center gap-1">
+          <Filter size={12} /> Entity Filter:
+        </span>
+        {FILTER_TYPES.map((filter) => {
+          const Icon = filter.icon;
+          const isActive = activeFilter === filter.name;
+          return (
+            <button
+              key={filter.name}
+              onClick={() => setActiveFilter(filter.name)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                isActive
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white/80 text-slate-600 hover:bg-slate-100 border border-slate-200/70'
+              }`}
+            >
+              <Icon size={12} />
+              {filter.name}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Right detail panel */}
-      <div
-        className="flex-shrink-0 flex flex-col p-4 overflow-y-auto"
-        style={{
-          width: 300,
-          borderLeft: '1px solid rgba(255,255,255,0.05)',
-          background: 'rgba(8,9,11,0.6)',
-        }}
-      >
-        <ThreatDetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
-        {!selectedNode && (
-          <div
-            className="flex flex-col items-center justify-center h-full text-center p-8"
-            style={{ color: 'rgba(255,255,255,0.2)' }}
-          >
-            <div className="text-4xl mb-4">◎</div>
-            <p className="text-sm font-medium mb-2 text-white/40">Select a threat node</p>
-            <p className="text-xs font-mono">Click any red or amber node in the graph to investigate</p>
-          </div>
-        )}
+      {/* Main Centerpiece Correlation Graph */}
+      <CorrelationGraph />
+
+      {/* Active Correlated Threat Cards */}
+      <div>
+        <div className="text-xs font-mono font-semibold uppercase tracking-widest text-slate-400 mb-3">
+          Active Threat Clusters
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {ACTIVE_THREATS.map((threat) => (
+            <motion.div
+              key={threat.id}
+              whileHover={{ y: -2 }}
+              className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase tracking-wider border ${
+                    threat.severity === 'critical'
+                      ? 'bg-rose-50 text-rose-600 border-rose-200'
+                      : threat.severity === 'high'
+                      ? 'bg-amber-50 text-amber-600 border-amber-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {threat.severity}
+                </span>
+                <span className="font-mono text-xs font-semibold text-rose-600">
+                  {threat.confidence}% confidence
+                </span>
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">{threat.title}</h3>
+                <p className="font-mono text-xs text-slate-500 mt-0.5">{threat.endpoint}</p>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-400 font-mono pt-2 border-t border-slate-100">
+                <span>Chain: {threat.attackChain}</span>
+                <span>First seen: {threat.firstSeen}</span>
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </div>
     </div>
   );

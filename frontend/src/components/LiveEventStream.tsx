@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type LiveEvent, type EventSeverity, generateEvents } from '../data/mockData';
 import { ArrowRight } from 'lucide-react';
@@ -49,7 +49,7 @@ export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
           </span>
-          <span className="text-sm font-semibold text-white">Live Event Stream</span>
+          <span className="text-sm font-semibold text-slate-900">Live Event Stream</span>
         </div>
         {onViewAll && (
           <button
