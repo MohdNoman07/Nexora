@@ -37,7 +37,7 @@ const AppLayout: React.FC = () => {
                 <span className="text-white font-bold text-[13px] font-serif tracking-tight">N</span>
               </div>
               <div>
-                <div className="text-[11px] font-extrabold tracking-[0.2em] text-slate-900 uppercase">N E X U S</div>
+                <div className="text-[11px] font-extrabold tracking-[0.2em] text-slate-900 uppercase">N E X O R A</div>
                 <div className="text-[7.5px] tracking-[0.16em] text-slate-400 font-semibold uppercase">See. Connect. Prevent.</div>
               </div>
             </div>
