@@ -1,47 +1,158 @@
-# Nexora — Incident Reconstruction Console (frontend)
+# Nexora — AI-Powered Security Monitoring & Incident Reconstruction
 
-Zero-dependency frontend for the AI-Powered Security Monitoring & Incident Reconstruction Platform.
-Three files, no build step: `index.html`, `styles.css`, `app.js`.
+Nexora doesn't stop at "flag the outlier on a dashboard." It **correlates flagged
+events across time into one coherent incident** — the mechanism that separates
+UEBA-style tooling from plain anomaly detection — and shows the evidence chain
+that produced each incident. Detection is validated with measured numbers, not
+numbers the simulator guarantees.
 
-## Run
+This repo is a **complete, runnable system**: a simulator, a detection engine, a
+correlation engine, a FastAPI backend (REST + WebSocket, Postgres/SQLite), and a
+React dashboard wired to live data.
 
-```bash
-cd nexora
-python3 -m http.server 5173
-# open http://localhost:5173
+![pipeline](https://img.shields.io/badge/pipeline-simulator→detection→correlation→API→UI-blue)
+
+---
+
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  FRONTEND  (React + TS, frontend/)                            │
+│  Dashboard · live stream · correlation graph · incidents ·    │
+│  evidence chain · benchmarks — one WebSocket, REST snapshots  │
+└───────────────▲───────────────────────────────────────────────┘
+                │ REST + WebSocket
+┌───────────────┴───────────────────────────────────────────────┐
+│  BACKEND  (FastAPI, backend/)                                 │
+│  /api/events /api/incidents /api/metrics /api/simulate/...    │
+│  /ws/events  ·  SQLAlchemy → Postgres (or SQLite)             │
+│                                                               │
+│  LIVE PIPELINE (backend/app/pipeline.py), every tick:         │
+│    simulator ─▶ rolling window ─▶ detection ─▶ correlation ─▶ │
+│    persist + broadcast                                        │
+└───┬─────────────────┬────────────────────┬────────────────────┘
+    │                 │                    │
+┌───▼──────────┐ ┌────▼──────────┐ ┌───────▼────────────────────┐
+│ simulator/   │ │ detection/    │ │ correlation/                │
+│ normal traffic│ │ IsolationForest│ │ entity-linked event graph   │
+│ + 4 attack    │ │ + rule flags  │ │ + attack-chain templates    │
+│ injectors     │ │ + classifier  │ │ + severity scoring          │
+│ (p2-pipeline) │ │               │ │ → incident + evidence chain │
+└───────────────┘ └───────────────┘ └─────────────────────────────┘
 ```
 
-Or just double-click `index.html`.
+Single canonical event schema (`p2-pipeline/schema/event_schema.json`) is the
+one contract: the backend Pydantic models and the frontend TypeScript types
+mirror it, and a test asserts they stay in sync.
 
-## What's in it
+---
 
-- **Liquid-glass shell** — clear glass navbar with a springy pill highlight that stretches to whatever you hover, blurred/saturated surfaces with inner specular highlights, drifting aurora background.
-- **Entity surface (canvas)** — the organization (`ACME-NET`) sits at the centre; the 10 entities from your event schema (auth, VPN, API gateway, Postgres, file store, endpoints, edge, mail) orbit it in pseudo-3D with perspective scaling and pointer parallax. Green packets = benign flow, red glowing packets/edges = flagged attack path. Hover a node for its risk tooltip, click to pin it in the entity panel.
-- **Live activity feed** — simulated WebSocket stream on the unified event schema, with events/sec sparkline, anomaly counter and a pause control in the navbar.
-- **Attack injection** — Brute force, Port scan, Data exfiltration. Each one lights the real attack path on the graph, streams flagged events, and assembles the incident **stage by stage** (that's the §6 correlation engine, visualised).
-- **Incident reconstruction** — 4-stage chain + evidence list with per-signal scores and `link` markers where events were joined by shared entity, severity ring, and a lookup-table recommended response (exactly the scope in §7).
-- **Benchmark section** — per-class precision/recall/F1 framed as CICIDS2017 results, plus FPR / detection latency / correlation accuracy from §10.
+## Quick start
 
-## Wiring it to FastAPI
+### Option A — Docker + Postgres (primary)
 
-Everything fake lives in three places in `app.js`:
+```bash
+docker compose up --build
+# open http://localhost:8000
+```
 
-1. `ENTITIES` — replace with `GET /entities`.
-2. `tickBenign()` / `pushEvent()` — replace the interval with a WebSocket handler:
-   ```js
-   const ws = new WebSocket('ws://localhost:8000/ws/events')
-   ws.onmessage = e => {
-     const ev = JSON.parse(e.data)               // {src, type, detail, flag, score}
-     pushEvent(ev)
-     const edge = edges.find(x => x.a === ev.src || x.b === ev.src)
-     if (edge) spawnPacket(edge, ev.flag)
-   }
-   ```
-3. `PLAYBOOK` — replace with the correlation engine's incident payload: `{name, action, path[], focus, stages[], evidence[], severity}`. `runAttack()` already renders whatever shape you hand it, so a real incident from `/incidents/{id}` drops straight in.
+One image builds the frontend, installs the backend, trains the detection models,
+and serves the SPA + API + WebSocket on port 8000, backed by Postgres (events and
+incidents persist across restarts).
 
-The injector buttons should become `POST /simulate/attack/{type}` — the UI then just waits for the incident to arrive over the socket instead of driving itself.
+### Option B — Local (no Docker, SQLite)
 
-## Notes
+```bash
+# 1. Python backend (from repo root)
+python -m pip install -r requirements.txt
+python -m detection.train_baseline        # one-time: trains models + writes metrics
+python -m uvicorn backend.app.main:app --port 8000
+#    → http://localhost:8000 (serves the SPA if frontend/dist exists)
 
-- Numbers in the benchmark section are placeholders for the mock — swap them for your actual CICIDS2017 run before the viva.
-- Respects `prefers-reduced-motion`; responsive down to 390px.
+# 2. Frontend dev server (separate terminal, optional — for hot reload)
+cd frontend
+npm install
+npm run dev                                 # → http://localhost:5173 (auto-targets :8000)
+```
+
+- `http://localhost:8000/docs` — interactive API docs
+- `ws://localhost:8000/ws/events` — live event/incident/stats stream
+
+---
+
+## Using it
+
+Open the dashboard, click **Inject Attack**, and pick one of the four scoped
+attacks. Watch it stream into the live feed, get flagged by the detector,
+reconstructed by the correlation engine into a single incident, and animate the
+attack chain on the graph with a threat card. The **Incidents** page shows the
+full evidence chain; **Analytics** shows the benchmark numbers.
+
+---
+
+## Attack scenarios (scope — plan §5/§7)
+
+| Attack | Signal class | How it's detected | Correlation template |
+|---|---|---|---|
+| **Brute force** | auth | ≥5 failed logins/user in a window → compromise chain | failures → success → db read → file download |
+| **Port scan** | network | ≥15 `connection_attempt`/IP in a window | burst of probes, one source IP |
+| **Data exfiltration** | volume | large file download (≥10 MB) | login → db read → bulk download |
+| **API abuse** | rate | ≥25 `api_call`/IP in a window | API-call burst, one source IP |
+
+Out of scope by design: privilege-escalation / insider scenarios, SQL-injection,
+a learned graph-neural correlation model, enterprise streaming infra.
+
+---
+
+## Data strategy & metrics (plan §4, §10 — the honest framing)
+
+Detection has two numbers, and Nexora reports both:
+
+- **Supervised classifier on simulated data** is near-perfect *by construction*
+  — injected attacks are separable, which is the **circularity trap**, not a
+  headline. The Analytics page labels it as such.
+- **Unsupervised IsolationForest** (attack-vs-benign) is the honest, transferable
+  number: **≈ P 0.83 / R 0.89 / F1 0.86** on held-out simulated data.
+- **Correlation accuracy**: 4/4 scoped attacks reconstructed into one incident
+  (reproducible self-check at `/api/metrics`).
+- **Benign false-positive rate** and **max detection latency** are reported too.
+
+For the **real-data** number (CICIDS2017 / UNSW-NB15), drop the dataset into
+`data/raw/` and run:
+
+```bash
+python -m detection.benchmark_cicids --dataset cicids2017   # or --dataset unsw
+```
+
+This writes `data/processed/metrics_real.json`. The live demo runs on the
+simulator because no public dataset gives cross-system (auth→api→db→file) event
+correlation at the granularity the reconstruction engine needs.
+
+---
+
+## Project structure
+
+```
+p2-pipeline/simulator/    normal-traffic generator + 4 attack injectors
+p2-pipeline/schema/       canonical event schema (single source of truth)
+detection/                features, IsolationForest detector, classifier, training, benchmark
+correlation/              event graph, templates, matcher, scoring, engine
+backend/app/              FastAPI app, routers, live pipeline, WebSocket, DB models
+frontend/src/             React dashboard (pages, live WebSocket provider, graph)
+data/processed/           generated metrics (+ class distributions)
+```
+
+## Testing
+
+```bash
+# simulator schema tests
+cd p2-pipeline && python -m pytest tests/ -v
+# correlation / detection sanity (from repo root)
+python -m detection.train_baseline        # prints metrics
+```
+
+## Tech stack
+
+Python · FastAPI · scikit-learn · NetworkX · SQLAlchemy · Postgres/SQLite ·
+React + TypeScript · Vite · Tailwind · Framer Motion · WebSocket.

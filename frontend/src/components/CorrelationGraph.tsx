@@ -8,9 +8,8 @@
  *  - Pulsing threat nodes
  *  - A floating React threat inspector card (NOT on canvas)
  */
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import type { SimulationState } from '../hooks/useAttackSimulation';
-import type { GraphNodeDef } from '../engine/attackEngine';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,9 +135,6 @@ export const CorrelationGraph: React.FC<Props> = ({ simulationState }) => {
   const sizeRef    = useRef({ w: 0, h: 0 });
   const timeRef    = useRef(0); // global clock for idle drift
 
-  // Active threat inspector node id (for the floating card)
-  const [inspectorNodeId, setInspectorNodeId] = useState<string>('');
-  const [inspectorPos, setInspectorPos]       = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
   // ── Initialize peripheral nodes ──────────────────────────────────────────────
   const initPeripheralNodes = useCallback((w: number, h: number) => {
@@ -234,11 +230,6 @@ export const CorrelationGraph: React.FC<Props> = ({ simulationState }) => {
         };
         edgesRef.current.push(newEdge);
       }
-    }
-
-    // Update inspector
-    if (threatNodeId) {
-      setInspectorNodeId(threatNodeId);
     }
 
   }, [simulationState]);
@@ -501,14 +492,6 @@ export const CorrelationGraph: React.FC<Props> = ({ simulationState }) => {
     return () => clearTimeout(t);
   }, []);
 
-  // ── Inspector card position (from canvas node position) ──
-  useEffect(() => {
-    if (!inspectorNodeId) return;
-    const node = nodesRef.current.find(n => n.id === inspectorNodeId);
-    if (node) {
-      setInspectorPos({ x: node.x, y: node.y });
-    }
-  });
 
   const sim = simulationState;
   const phase = sim?.phase ?? 'idle';

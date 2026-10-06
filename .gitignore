@@ -15,6 +15,20 @@ dist-ssr
 __pycache__/
 *.pyc
 
+# Python envs
+.venv/
+venv/
+
+# Nexora runtime artifacts (generated — regenerate with training / running)
+*.db
+*.sqlite3
+nexora*.db
+detection/models/*.joblib
+detection/models/*.json
+data/processed/metrics.json
+
+# Raw datasets (large, not committed — see README data strategy)
+data/raw/
 
 # Editor directories and files
 .vscode/*

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { generateAttack, type GraphNodeDef, type GraphEdgeDef, type AttackEvent, type ThreatInfo } from '../engine/attackEngine';
+import { generateAttack, type GraphNodeDef, type AttackEvent, type ThreatInfo } from '../engine/attackEngine';
 
 export type SimPhase = 'idle' | 'detecting' | 'correlating' | 'escalating' | 'resolved';
 

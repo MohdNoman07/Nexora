@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import WaveImg from './../assets/Wave.png';
+import { useLive } from '../live/LiveContext';
 
 /**
  * AppLayout — Fixed sidebar + fixed topbar, window scrolls naturally.
@@ -8,6 +9,8 @@ import WaveImg from './../assets/Wave.png';
  * ReactLenis root targets window.scrollY, so the window must be the scroller.
  */
 const AppLayout: React.FC = () => {
+  const { stats, connected } = useLive();
+  const threatCount = stats.active_threats;
   return (
     <div className="antialiased text-slate-800">
 
@@ -68,8 +71,8 @@ const AppLayout: React.FC = () => {
                         <path d={icon} />
                       </svg>
                       <span>{label}</span>
-                      {label === 'Incidents' && (
-                        <span className="ml-auto bg-rose-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">3</span>
+                      {label === 'Incidents' && threatCount > 0 && (
+                        <span className="ml-auto bg-rose-500 text-white text-[9px] font-bold min-w-4 h-4 px-1 rounded-full flex items-center justify-center">{threatCount}</span>
                       )}
                       {label === 'Live Events' && (
                         <span className={`ml-auto w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-emerald-400'} animate-pulse`}></span>
@@ -121,10 +124,10 @@ const AppLayout: React.FC = () => {
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              <span className={`absolute inline-flex h-full w-full rounded-full ${connected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
             </span>
-            All systems operational
+            {connected ? 'All systems operational' : 'Reconnecting to pipeline…'}
           </div>
           <button className="relative p-1.5 text-slate-400 hover:text-slate-700 transition">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
