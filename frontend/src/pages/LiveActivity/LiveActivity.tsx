@@ -1,169 +1,106 @@
-import { useState, useEffect, useRef } from 'react';
-import { Play, Square, X } from 'lucide-react';
-import { useSimulation } from '../../context/SimulationContext';
-import type { NexoraEvent } from '../../types/nexora';
-import { Panel, EventIcon, ScoreTag, eventLabel } from '../../components/ui';
-import { format } from 'date-fns';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useLive } from '../../live/LiveContext';
+import { toAttackEvent } from '../../live/useChoreography';
+import type { AttackEvent } from '../../engine/attackEngine';
 
-const LiveActivity = () => {
-  const { events: simEvents } = useSimulation();
+type Sev = AttackEvent['severity'];
 
-  const simEventsRef = useRef(simEvents);
-  useEffect(() => { simEventsRef.current = simEvents; }, [simEvents]);
+const SEV_CONFIG: Record<Sev, { label: string; color: string; bg: string; dot: string }> = {
+  critical: { label: 'Threat',     color: 'text-rose-600',   bg: 'bg-rose-50',   dot: 'bg-rose-500' },
+  high:     { label: 'Anomaly',    color: 'text-amber-600',  bg: 'bg-amber-50',  dot: 'bg-amber-500' },
+  medium:   { label: 'Suspicious', color: 'text-violet-600', bg: 'bg-violet-50', dot: 'bg-violet-500' },
+  info:     { label: 'Normal',     color: 'text-slate-500',  bg: 'bg-slate-100', dot: 'bg-slate-400' },
+};
 
-  const [events, setEvents] = useState<NexoraEvent[]>(() => {
-    const base = [...simEvents].reverse().slice(0, 8);
-    const now = Date.now();
-    return base.map((ev, i) => ({
-      ...ev,
-      // i=0 is top (most recent), i=7 is bottom (oldest). 2 seconds apart.
-      timestamp: new Date(now - i * 2000).toISOString()
-    }));
-  });
-  const [isLive, setIsLive] = useState(true);
-  const [selectedEvent, setSelectedEvent] = useState<NexoraEvent | null>(null);
+const FILTERS: (Sev | 'all')[] = ['all', 'critical', 'high', 'medium', 'info'];
 
-  const prevSimLengthRef = useRef(simEvents.length);
-  useEffect(() => {
-    const current = simEvents.length;
-    if (current > prevSimLengthRef.current) {
-      const newEvents = simEvents.slice(prevSimLengthRef.current);
-      setEvents(prev => [...[...newEvents].reverse(), ...prev].slice(0, 50));
-      prevSimLengthRef.current = current;
-    }
-  }, [simEvents]);
+const LiveActivityPage: React.FC = () => {
+  const { events, connected, injectAttack } = useLive();
+  const [filter, setFilter] = useState<Sev | 'all'>('all');
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isLive) return;
-    let currentIndex = 0;
-    const interval = setInterval(() => {
-      setEvents(prev => {
-        const pool = simEventsRef.current;
-        const nextEvent = {
-          ...pool[currentIndex % pool.length],
-          id: `evt-sim-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-        };
-        currentIndex = (currentIndex + 1) % pool.length;
-        return [nextEvent, ...prev].slice(0, 50);
-      });
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [isLive]);
+  const rows = events.map((e) => ({ raw: e, ev: toAttackEvent(e) }));
+  const filtered = filter === 'all' ? rows : rows.filter((r) => r.ev.severity === filter);
 
   return (
-    <div className="space-y-5 max-w-[1400px] mx-auto pb-10">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="font-mono text-lg font-semibold tracking-tight text-text-primary">LIVE EVENT STREAM</h1>
-          <span
-            className="flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono border"
-            style={{
-              color: isLive ? 'var(--color-sev-critical)' : 'var(--color-text-tertiary)',
-              borderColor: isLive ? 'rgba(255,84,112,0.4)' : 'var(--color-line)',
-            }}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'animate-pulse-live' : ''}`} style={{ backgroundColor: isLive ? 'var(--color-sev-critical)' : 'var(--color-text-tertiary)' }} />
-            {isLive ? 'LIVE' : 'PAUSED'}
-          </span>
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-shrink-0 px-8 py-6 border-b border-slate-200/60 bg-white/30 backdrop-blur-sm">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="relative flex h-2 w-2">
+                <span className={`absolute inline-flex h-full w-full rounded-full ${connected ? 'bg-emerald-400 animate-ping' : 'bg-slate-300'} opacity-75`} />
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${connected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              </span>
+              <span className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-semibold">
+                {connected ? 'Live Telemetry · streaming' : 'Reconnecting…'}
+              </span>
+            </div>
+            <h1 className="text-3xl font-serif italic text-slate-900 font-normal">Live Event Stream</h1>
+            <p className="text-xs text-slate-500 mt-1">Every event the detection engine scores, in real time. Flagged events feed the correlation engine.</p>
+          </div>
+          <button onClick={() => injectAttack()}
+            className="px-4 py-2 rounded-xl text-[12px] font-semibold bg-slate-900 text-white hover:bg-slate-700 transition">
+            Inject Random Attack
+          </button>
         </div>
-        <button
-          onClick={() => setIsLive(!isLive)}
-          className="flex items-center gap-2 bg-ink-1 border border-line px-3 py-1.5 rounded-sm text-xs font-mono hover:border-text-tertiary transition-colors"
-        >
-          {isLive ? <Square className="w-3.5 h-3.5" style={{ color: 'var(--color-sev-high)' }} /> : <Play className="w-3.5 h-3.5" style={{ color: 'var(--color-signal)' }} />}
-          {isLive ? 'PAUSE' : 'RESUME'}
-        </button>
+
+        <div className="flex items-center gap-2 mt-4">
+          {FILTERS.map((f) => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-full text-[11px] font-semibold capitalize transition ${
+                filter === f ? 'bg-slate-900 text-white' : 'bg-slate-100/80 text-slate-500 hover:bg-slate-200'
+              }`}>
+              {f === 'all' ? 'All' : SEV_CONFIG[f].label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-5 items-start">
-        <Panel className={selectedEvent ? 'w-full lg:w-2/3' : 'w-full'} title="REAL-TIME CORRELATION FEED" subtitle={`Displaying ${events.length} events`}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="text-[10px] font-mono text-text-tertiary tracking-wide border-b border-line-soft">
-                <tr>
-                  <th className="px-5 py-2.5 font-medium">TIME</th>
-                  <th className="px-5 py-2.5 font-medium">EVENT</th>
-                  <th className="px-5 py-2.5 font-medium">TARGET</th>
-                  <th className="px-5 py-2.5 font-medium">SOURCE IP</th>
-                  <th className="px-5 py-2.5 font-medium text-right">ANOMALY</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-line-soft)]">
-                {events.map(ev => {
-                  const metadataStr = ev.metadata ? Object.entries(ev.metadata).map(([k, v]) => `${k}:${v}`).join(' ') : '—';
-                  const isSelected = selectedEvent?.id === ev.id;
-                  return (
-                    <tr
-                      key={ev.id}
-                      onClick={() => setSelectedEvent(ev)}
-                      className="cursor-pointer transition-colors animate-row-in border-l-2"
-                      style={{
-                        backgroundColor: isSelected ? 'rgba(51,214,192,0.06)' : ev.attack_label ? 'rgba(255,84,112,0.04)' : undefined,
-                        borderLeftColor: isSelected ? 'var(--color-signal)' : 'transparent',
-                      }}
-                    >
-                      <td className="px-5 py-3 readout text-xs text-text-secondary">{format(new Date(ev.timestamp), 'HH:mm:ss')}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
-                            <EventIcon type={ev.event_type} /> {eventLabel(ev.event_type)}
-                          </span>
-                          {ev.attack_label && (
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ color: 'var(--color-sev-critical)', backgroundColor: 'rgba(255,84,112,0.1)' }}>
-                              {ev.attack_label.toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-xs readout text-text-tertiary truncate max-w-[150px]" title={metadataStr}>{metadataStr}</td>
-                      <td className="px-5 py-3 text-xs readout text-text-secondary">{ev.ip}</td>
-                      <td className="px-5 py-3 text-right"><ScoreTag value={ev.anomaly_score} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-
-        {selectedEvent && (
-          <Panel
-            className="w-full lg:w-1/3 sticky top-6"
-            title="EVENT DETAIL"
-            action={<button onClick={() => setSelectedEvent(null)} className="text-text-tertiary hover:text-text-primary"><X className="w-4 h-4" /></button>}
-          >
-            <div className="p-4 space-y-4 text-sm">
-              <DetailField label="EVENT ID" value={selectedEvent.id ?? '—'} mono />
-              <DetailField label="TIMESTAMP" value={format(new Date(selectedEvent.timestamp), 'yyyy-MM-dd HH:mm:ss')} mono />
-              <div className="grid grid-cols-2 gap-4">
-                <DetailField label="USER" value={selectedEvent.user} />
-                <DetailField label="SOURCE IP" value={selectedEvent.ip} mono />
+      <div className="flex-1 px-8 py-5 overflow-auto">
+        <div className="bg-white/90 rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
+          <AnimatePresence initial={false}>
+            {filtered.length === 0 && (
+              <div className="px-6 py-10 text-center text-[13px] text-slate-400">
+                {connected ? 'No events match this filter yet.' : 'Connecting to backend…'}
               </div>
-              <DetailField label="SESSION ID" value={selectedEvent.session} mono block />
-              {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
-                <div>
-                  <div className="text-[10px] font-mono text-text-tertiary tracking-wide mb-1.5">METADATA</div>
-                  <div className="bg-ink-2 border border-line-soft p-3 rounded-sm font-mono text-xs text-text-primary space-y-1">
-                    {Object.entries(selectedEvent.metadata).map(([k, v]) => (
-                      <div key={k}><span className="text-text-tertiary">{k}:</span> {v as string}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Panel>
-        )}
+            )}
+            {filtered.map(({ raw, ev }) => {
+              const cfg = SEV_CONFIG[ev.severity];
+              const open = expanded === raw.id;
+              return (
+                <motion.div key={raw.id} layout
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="border-b border-slate-100 last:border-0">
+                  <button onClick={() => setExpanded(open ? null : raw.id)}
+                    className="w-full flex items-center gap-4 px-6 py-3 hover:bg-slate-50/70 transition text-left">
+                    <span className="font-mono text-[11px] text-slate-400 w-[72px]">{ev.time}</span>
+                    <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                    <span className={`text-[12px] font-semibold w-[130px] ${cfg.color}`}>{ev.label}</span>
+                    <span className="font-mono text-[11px] text-slate-500 w-[180px] truncate">{ev.path}</span>
+                    <span className="font-mono text-[11px] text-slate-400 w-[110px]">{ev.ip}</span>
+                    <span className="text-[12px] text-slate-500 flex-1 truncate">{ev.detail}</span>
+                    {raw.flagged && (
+                      <span className="text-[9px] font-mono font-bold uppercase bg-rose-50 text-rose-600 border border-rose-200 px-1.5 py-0.5 rounded">flagged</span>
+                    )}
+                  </button>
+                  {open && (
+                    <div className="px-6 pb-4 pt-1 bg-slate-50/60 text-[11px] font-mono text-slate-500 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1">
+                      <div><span className="text-slate-400">user:</span> {raw.user}</div>
+                      <div><span className="text-slate-400">session:</span> {raw.session.slice(0, 10)}</div>
+                      <div><span className="text-slate-400">anomaly:</span> {raw.anomaly_score ?? '—'}</div>
+                      <div><span className="text-slate-400">label:</span> {raw.attack_label ?? 'benign'}</div>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
 };
 
-const DetailField = ({ label, value, mono, block }: { label: string; value: string; mono?: boolean; block?: boolean }) => (
-  <div>
-    <div className="text-[10px] font-mono text-text-tertiary tracking-wide mb-1">{label}</div>
-    <div className={`${mono ? 'readout' : ''} text-text-primary ${block ? 'text-xs break-all bg-ink-2 border border-line-soft p-2 rounded-sm' : ''}`}>{value}</div>
-  </div>
-);
-
-export default LiveActivity;
+export default LiveActivityPage;

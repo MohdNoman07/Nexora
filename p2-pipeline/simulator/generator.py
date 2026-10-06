@@ -25,9 +25,9 @@ from __future__ import annotations
 import json
 import random
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Iterator, Optional
 
 
 # --- Config -----------------------------------------------------------
@@ -77,6 +77,16 @@ class Event:
     session: str
     severity: float
     metadata: dict
+    # Assigned at creation so every event is addressable end-to-end. The
+    # correlation graph keys nodes on this, and the frontend uses it as a
+    # React key. Detection fills in anomaly_score / attack_label / flagged.
+    id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    anomaly_score: Optional[float] = None
+    attack_label: Optional[str] = None
+    flagged: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -92,8 +102,15 @@ def _random_session() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def iso(dt: datetime) -> str:
+    """Format a datetime as the canonical ISO-8601 UTC '...Z' string."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return iso(datetime.now(timezone.utc))
 
 
 def _pick_event_type() -> str:

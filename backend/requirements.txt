@@ -1,4 +1,4 @@
-fastapi
-uvicorn
-pydantic
-websockets
+# Backend-only pin file (mirrors the root requirements.txt). The Docker image
+# installs the root requirements.txt; this file is here for anyone who wants to
+# install just the backend stack.
+-r ../requirements.txt

@@ -1,137 +1,120 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
-import { useSimulation } from '../../context/SimulationContext';
-import { Panel, SeverityTag, SEVERITY_COLOR, templateLabel, type Severity } from '../../components/ui';
-import { format } from 'date-fns';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronRight, Clock, Shield, Target, Users } from 'lucide-react';
+import { useLive } from '../../live/LiveContext';
+import type { Incident, IncidentSeverity } from '../../types/nexora';
 
-const SEVERITIES: Severity[] = ['Critical', 'High', 'Medium', 'Low'];
+const SEV: Record<IncidentSeverity, { color: string; bg: string; border: string; text: string; label: string }> = {
+  critical: { color: '#ef4444', bg: 'bg-rose-50',   border: 'border-rose-200',   text: 'text-rose-600',   label: 'Critical' },
+  high:     { color: '#f59e0b', bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-600',  label: 'High' },
+  medium:   { color: '#8b5cf6', bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-600', label: 'Medium' },
+  low:      { color: '#06b6d4', bg: 'bg-cyan-50',   border: 'border-cyan-200',   text: 'text-cyan-600',   label: 'Low' },
+};
 
-const IncidentsList = () => {
-  const navigate = useNavigate();
-  const { incidents } = useSimulation();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [severityFilter, setSeverityFilter] = useState<Severity | 'All'>('All');
+const fmt = (iso: string) => {
+  try { return new Date(iso).toLocaleString('en-US', { hour12: false }); } catch { return iso; }
+};
 
-  const filtered = incidents.filter(inc => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      term === '' ||
-      inc.id.toLowerCase().includes(term) ||
-      templateLabel(inc.template_name).toLowerCase().includes(term) ||
-      inc.description.toLowerCase().includes(term);
-    const matchesSeverity = severityFilter === 'All' || inc.severity === severityFilter;
-    return matchesSearch && matchesSeverity;
-  });
+const IncidentCard: React.FC<{ inc: Incident; open: boolean; onToggle: () => void }> = ({ inc, open, onToggle }) => {
+  const cfg = SEV[inc.severity] ?? SEV.low;
+  return (
+    <motion.div layout className={`rounded-2xl border ${cfg.border} bg-white/90 shadow-sm overflow-hidden`}>
+      <button onClick={onToggle} className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-slate-50/60 transition">
+        <span className={`w-9 h-9 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0`}>
+          <Shield className="w-4 h-4" style={{ color: cfg.color }} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-[14px] text-slate-900 truncate">{inc.attack_pattern}</h3>
+            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text} border ${cfg.border}`}>{cfg.label}</span>
+          </div>
+          <p className="text-[11px] text-slate-500 truncate mt-0.5">{inc.description}</p>
+        </div>
+        <div className="hidden md:flex items-center gap-6 text-[11px] text-slate-500 font-mono shrink-0">
+          <span className="flex items-center gap-1"><Target className="w-3 h-3" /> {inc.events.length} evts</span>
+          <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> {Math.round(inc.confidence * 100)}%</span>
+          <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{inc.id}</span>
+        </div>
+        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="border-t border-slate-100 overflow-hidden">
+            <div className="px-5 py-4 grid lg:grid-cols-3 gap-5">
+              {/* Evidence chain */}
+              <div className="lg:col-span-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Reconstructed evidence chain</h4>
+                <ol className="relative border-l border-slate-200 ml-2 space-y-2">
+                  {inc.evidence.map((ev, i) => (
+                    <li key={ev.id} className="ml-4">
+                      <span className="absolute -left-[5px] w-2.5 h-2.5 rounded-full" style={{ background: cfg.color }} />
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="font-mono text-slate-400">{new Date(ev.timestamp).toLocaleTimeString('en-US', { hour12: false })}</span>
+                        <span className="font-semibold text-slate-700">{ev.reason}</span>
+                        {i > 0 && <span className="text-[9px] font-mono text-indigo-500">↳ linked</span>}
+                        {ev.score != null && <span className="ml-auto font-mono text-slate-400">score {Number(ev.score).toFixed(2)}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {/* Side panel */}
+              <div className="space-y-3">
+                <div className="text-[11px] space-y-1.5">
+                  <div className="flex items-center gap-2 text-slate-500"><Clock className="w-3 h-3" /> {fmt(inc.timeline.started_at)}</div>
+                  <div className="flex items-center gap-2 text-slate-500"><Users className="w-3 h-3" /> {inc.entities.users.join(', ') || '—'}</div>
+                  <div className="font-mono text-slate-400">IPs: {inc.entities.ips.join(', ') || '—'}</div>
+                </div>
+                <div className={`rounded-xl ${cfg.bg} border ${cfg.border} p-3`}>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-1">Recommended action</div>
+                  <p className="text-[11px] text-slate-700 leading-relaxed">{inc.recommended_action}</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
+const IncidentsPage: React.FC = () => {
+  const { incidents, injectAttack, connected } = useLive();
+  const [openId, setOpenId] = useState<string | null>(null);
 
   return (
-    <div className="space-y-5 max-w-[1400px] mx-auto pb-10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="font-mono text-lg font-semibold tracking-tight text-text-primary">INCIDENTS</h1>
-
-        <div className="flex items-center gap-2">
-          <div className="relative w-60">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-tertiary" />
-            <input
-              type="text"
-              placeholder="Search…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-ink-1 border border-line rounded-sm py-1.5 pl-8 pr-7 text-sm font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[var(--color-signal-dim)] transition-colors"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex border border-line rounded-sm overflow-hidden">
-            <button
-              onClick={() => setSeverityFilter('All')}
-              className={`px-2.5 py-1.5 text-[11px] font-mono transition-colors ${severityFilter === 'All' ? 'bg-ink-2 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'}`}
-            >
-              ALL
-            </button>
-            {SEVERITIES.map(s => (
-              <button
-                key={s}
-                onClick={() => setSeverityFilter(s)}
-                className={`px-2.5 py-1.5 text-[11px] font-mono border-l border-line transition-colors ${severityFilter === s ? 'bg-ink-2' : 'hover:bg-ink-2/50'}`}
-                style={{ color: severityFilter === s ? SEVERITY_COLOR[s] : undefined }}
-              >
-                {s.slice(0, 4).toUpperCase()}
-              </button>
-            ))}
-          </div>
+    <div className="px-8 py-8 max-w-[1200px] mx-auto space-y-5">
+      <div className="flex items-end justify-between border-b border-slate-200/80 pb-5 flex-wrap gap-3">
+        <div>
+          <span className="text-[11px] font-mono uppercase tracking-widest text-slate-400 font-semibold">Incident Response</span>
+          <h1 className="text-3xl font-serif italic text-slate-900 font-normal mt-1">Reconstructed Incidents</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            {incidents.length} incident{incidents.length === 1 ? '' : 's'} assembled from correlated events — not a pile of independent alerts.
+          </p>
         </div>
+        <button onClick={() => injectAttack()} className="px-4 py-2 rounded-xl text-[12px] font-semibold bg-slate-900 text-white hover:bg-slate-700 transition">
+          Inject Random Attack
+        </button>
       </div>
 
-      <Panel>
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <p className="text-sm text-text-secondary mb-1">No incidents match this filter.</p>
-            <p className="text-xs text-text-tertiary mb-3">Adjust the search term or severity filter.</p>
-            {(searchTerm || severityFilter !== 'All') && (
-              <button onClick={() => { setSearchTerm(''); setSeverityFilter('All'); }} className="text-xs font-mono hover:underline" style={{ color: 'var(--color-signal)' }}>
-                CLEAR FILTERS
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="text-[10px] font-mono text-text-tertiary tracking-wide border-b border-line-soft">
-                <tr>
-                  <th className="px-5 py-3 font-medium">ID</th>
-                  <th className="px-5 py-3 font-medium">SEVERITY</th>
-                  <th className="px-5 py-3 font-medium">PATTERN</th>
-                  <th className="px-5 py-3 font-medium">CONFIDENCE</th>
-                  <th className="px-5 py-3 font-medium">WINDOW</th>
-                  <th className="px-5 py-3 font-medium text-right">EVENTS</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-line-soft)]">
-                {filtered.map(incident => (
-                  <tr
-                    key={incident.id}
-                    onClick={() => navigate(`/incidents/${incident.id}`)}
-                    className="cursor-pointer hover:bg-ink-2/40 transition-colors border-l-2"
-                    style={{ borderLeftColor: SEVERITY_COLOR[incident.severity as Severity] ?? 'transparent' }}
-                  >
-                    <td className="px-5 py-3.5 font-mono text-text-primary font-medium">{incident.id}</td>
-                    <td className="px-5 py-3.5"><SeverityTag severity={incident.severity} /></td>
-                    <td className="px-5 py-3.5 text-text-secondary">{templateLabel(incident.template_name)}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex flex-col gap-1.5 w-24">
-                        <span className="readout text-xs text-text-secondary">{Math.round(incident.confidence * 100)}%</span>
-                        <div className="h-1 w-full bg-[var(--color-line-soft)] overflow-hidden rounded-sm">
-                          <div 
-                            className="h-full" 
-                            style={{ 
-                              width: `${Math.round(incident.confidence * 100)}%`,
-                              backgroundColor: SEVERITY_COLOR[incident.severity as Severity] ?? 'var(--color-text-tertiary)' 
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-text-tertiary text-xs font-mono">
-                      {format(new Date(incident.start_time), 'MMM d, HH:mm')} → {format(new Date(incident.end_time), 'HH:mm')}
-                    </td>
-                    <td className="px-5 py-3.5 text-right font-mono text-xs text-text-secondary">{incident.matched_events.length}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="border-t border-line-soft px-5 py-3 text-xs font-mono text-text-tertiary">
-          {filtered.length} of {incidents.length} incidents
+      {incidents.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center">
+          <p className="text-[13px] text-slate-500">
+            {connected ? 'No incidents yet — inject an attack to see one reconstructed live.' : 'Connecting to backend…'}
+          </p>
         </div>
-      </Panel>
+      )}
+
+      <div className="space-y-3">
+        {incidents.map((inc) => (
+          <IncidentCard key={inc.id} inc={inc} open={openId === inc.id} onToggle={() => setOpenId(openId === inc.id ? null : inc.id)} />
+        ))}
+      </div>
     </div>
   );
 };
 
-export default IncidentsList;
+export default IncidentsPage;

@@ -1,178 +1,152 @@
-import { useState, useEffect, useRef } from 'react';
-import { Outlet, NavLink, Link } from 'react-router-dom';
-import {
-  Radar,
-  Activity,
-  AlertTriangle,
-  ChevronDown,
-  Zap,
-  Wifi,
-} from 'lucide-react';
-import { useSimulation } from '../context/SimulationContext';
-import type { AttackScenario } from '../context/SimulationContext';
+import React from 'react';
+import { Outlet, NavLink } from 'react-router-dom';
+import WaveImg from './../assets/Wave.png';
+import { useLive } from '../live/LiveContext';
 
-const SCENARIOS: { label: string; type: AttackScenario }[] = [
-  { label: 'Credential Stuffing', type: 'credential_stuffing' },
-  { label: 'Port Scan', type: 'port_scan' },
-  { label: 'Data Exfiltration', type: 'exfiltration' },
-];
-
-const NAV_ITEMS = [
-  { to: '/dashboard', icon: Radar, label: 'Overview' },
-  { to: '/live', icon: Activity, label: 'Live Feed' },
-  { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
-];
-
-// Icon rail, not a labelled sidebar — this is the whole nav on every screen
-// size, so there is no separate mobile layout to maintain.
-const Rail = () => {
+/**
+ * AppLayout — Fixed sidebar + fixed topbar, window scrolls naturally.
+ * This is required for Lenis root-mode smooth scroll to work.
+ * ReactLenis root targets window.scrollY, so the window must be the scroller.
+ */
+const AppLayout: React.FC = () => {
+  const { stats, connected } = useLive();
+  const threatCount = stats.active_threats;
   return (
-    <aside className="w-16 shrink-0 h-screen bg-ink-1 border-r border-line flex flex-col items-center py-4">
-      <div
-        className="w-9 h-9 rounded-sm flex items-center justify-center mb-6 border"
-        style={{ borderColor: 'var(--color-signal-dim)', backgroundColor: 'rgba(51,214,192,0.1)' }}
-      >
-        <Radar className="w-[18px] h-[18px]" style={{ color: 'var(--color-signal)' }} />
-      </div>
+    <div className="antialiased text-slate-800">
 
-      <nav className="flex-1 flex flex-col gap-1.5">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            title={label}
-            className={({ isActive }) =>
-              `group relative w-10 h-10 rounded-sm flex items-center justify-center transition-colors ${
-                isActive ? 'bg-ink-2 text-text-primary' : 'text-text-tertiary hover:text-text-secondary hover:bg-ink-2/60'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ backgroundColor: 'var(--color-signal)' }} />
-                )}
-                <Icon className="w-[18px] h-[18px]" />
-                <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap text-xs font-mono bg-ink-2 border border-line px-2 py-1 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                  {label}
-                </span>
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+      {/* ── Sidebar (fixed) ── */}
+      <aside className="fixed top-0 left-0 bottom-0 w-[220px] flex flex-col justify-between bg-white/70 backdrop-blur-2xl border-r border-slate-200/60 z-40 select-none overflow-hidden">
+        
+        {/* Wave ambient background — multiply blend makes it feel like part of the wall */}
+        <div className="absolute bottom-0 left-0 w-full h-[380px] pointer-events-none select-none z-0" aria-hidden="true">
+          <img
+            src={WaveImg}
+            alt=""
+            className="w-full h-full object-cover object-bottom"
+            style={{
+              opacity: 0.13,
+              mixBlendMode: 'multiply',
+              filter: 'saturate(0.6) brightness(1.1)',
+            }}
+          />
+        </div>
 
-      <div className="flex flex-col items-center gap-2 pt-3 border-t border-line-soft w-full">
-        <span className="w-2 h-2 rounded-full animate-pulse-live" style={{ backgroundColor: 'var(--color-signal)' }} title="Monitoring active" />
-      </div>
-    </aside>
-  );
-};
+        {/* Content above the wave */}
+        <div className="relative z-10 flex flex-col justify-between h-full">
+          {/* Logo */}
+          <div className="px-5 pt-6 pb-2">
+            <div className="flex items-center gap-2.5 mb-8">
+              <div className="h-7 w-7 rounded-lg bg-slate-950 flex items-center justify-center shadow-sm">
+                <span className="text-white font-bold text-[13px] font-serif tracking-tight">N</span>
+              </div>
+              <div>
+                <div className="text-[11px] font-extrabold tracking-[0.2em] text-slate-900 uppercase">N E X O R A</div>
+                <div className="text-[7.5px] tracking-[0.16em] text-slate-400 font-semibold uppercase">See. Connect. Prevent.</div>
+              </div>
+            </div>
 
-function useLiveClock() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
+            <nav className="space-y-0.5">
+              {[
+                { to: '/dashboard',      label: 'Overview',       icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10' },
+                { to: '/live',           label: 'Live Events',    icon: 'M22 12h-4l-3 9L9 3l-3 9H2' },
+                { to: '/infrastructure', label: 'Infrastructure', icon: 'M2 3h20v7H2z M2 14h20v7H2z M6 6v.01 M6 17v.01' },
+                { to: '/incidents',      label: 'Incidents',      icon: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01' },
+                { to: '/correlation',    label: 'Correlation',    icon: 'M18 5a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.59 13.51l6.83 3.98 M15.41 6.51l-6.82 3.98' },
+                { to: '/analytics',      label: 'Analytics',      icon: 'M18 20V10 M12 20V4 M6 20v-6' },
+              ].map(({ to, label, icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-sm border border-slate-200/70'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <svg className="w-[15px] h-[15px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                        <path d={icon} />
+                      </svg>
+                      <span>{label}</span>
+                      {label === 'Incidents' && threatCount > 0 && (
+                        <span className="ml-auto bg-rose-500 text-white text-[9px] font-bold min-w-4 h-4 px-1 rounded-full flex items-center justify-center">{threatCount}</span>
+                      )}
+                      {label === 'Live Events' && (
+                        <span className={`ml-auto w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-emerald-400'} animate-pulse`}></span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
 
-const InjectAttackControl = () => {
-  const { injectAttack, injectionStatus } = useSimulation();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const isDisabled = injectionStatus === 'injecting';
-  const label =
-    injectionStatus === 'injecting' ? 'INJECTING…' : injectionStatus === 'done' ? 'INJECTED' : 'INJECT ATTACK';
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => { if (!isDisabled && injectionStatus === 'idle') setOpen(o => !o); }}
-        disabled={isDisabled}
-        className={`inline-flex items-center gap-2 text-[11px] font-mono font-semibold tracking-wide px-3 py-1.5 rounded-sm border transition-colors ${
-          injectionStatus === 'done'
-            ? 'border-[var(--color-signal-dim)] text-[var(--color-signal)]'
-            : isDisabled
-            ? 'border-line text-text-tertiary cursor-not-allowed'
-            : 'border-line text-text-secondary hover:text-text-primary hover:border-text-tertiary'
-        }`}
-      >
-        <Zap className="w-3.5 h-3.5" />
-        {label}
-        {injectionStatus === 'idle' && <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />}
-      </button>
-
-      {open && injectionStatus === 'idle' && (
-        <div className="absolute right-0 top-full mt-1.5 w-56 bg-ink-2 border border-line rounded-sm z-50 py-1">
-          <div className="px-3 pt-2 pb-1 text-[10px] font-mono text-text-tertiary tracking-wide">SIMULATION SCENARIOS</div>
-          {SCENARIOS.map(({ label, type }) => (
-            <button
-              key={type}
-              onClick={() => { setOpen(false); injectAttack(type); }}
-              className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-ink-1 hover:text-text-primary transition-colors"
-            >
-              {label}
+          {/* Bottom — Settings + tagline */}
+          <div className="px-5 pb-6 space-y-4 pt-8">
+            <button className="flex items-center gap-3 text-[13px] font-medium text-slate-500 hover:text-slate-800 transition-colors w-full">
+              <svg className="w-[15px] h-[15px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" viewBox="0 0 24 24">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              Settings
             </button>
-          ))}
-          <div className="px-3 py-2 mt-1 border-t border-line-soft text-[10px] text-text-tertiary">
-            Simulated injection only — no real system action
+
+            <div className="border-t border-slate-200/60 pt-3">
+              <p className="font-serif text-[14px] leading-snug text-slate-800">
+                Smarter Security<br/>
+                <span className="italic text-slate-400 font-light">for a Safer Tomorrow.</span>
+              </p>
+              <div className="w-5 h-px bg-slate-300 mt-2"></div>
+            </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-};
+      </aside>
 
-// Console status bar: reads like an instrument readout, not an app header —
-// live clock, throughput, connection state. Carries the page title too.
-const StatusBar = () => {
-  const { events } = useSimulation();
-  const now = useLiveClock();
+      {/* ── Topbar (fixed) ── */}
+      <header className="fixed top-0 left-[220px] right-0 h-14 border-b border-slate-200/60 bg-white/70 backdrop-blur-md px-6 flex items-center justify-between z-30">
+        <div className="relative w-80">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </span>
+          <input
+            type="text"
+            placeholder="Search for IP, endpoint, user, or incident..."
+            className="w-full pl-8 pr-14 py-1.5 text-[12px] bg-slate-100/80 border border-slate-200/60 rounded-full placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition text-slate-700"
+          />
+          <span className="absolute inset-y-0 right-0 flex items-center pr-2.5">
+            <kbd className="text-[9px] font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-500 shadow-sm">⌘ K</kbd>
+          </span>
+        </div>
 
-  return (
-    <header className="h-12 border-b border-line bg-ink-1 flex items-center justify-between px-5 shrink-0 text-xs font-mono">
-      <div className="flex items-center gap-5 text-text-tertiary">
-        <Link to="/" className="text-text-secondary font-semibold tracking-wide hover:text-text-primary transition-colors">
-          NEXORA
-        </Link>
-        <span className="hidden sm:inline">EVENTS&nbsp;<span className="readout text-text-primary">{events.length}</span></span>
-        <span className="hidden md:inline-flex items-center gap-1.5">
-          <Wifi className="w-3 h-3" style={{ color: 'var(--color-signal)' }} />
-          <span style={{ color: 'var(--color-signal)' }}>SIMULATION</span>
-        </span>
+        <div className="flex items-center gap-5">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className={`absolute inline-flex h-full w-full rounded-full ${connected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+            </span>
+            {connected ? 'All systems operational' : 'Reconnecting to pipeline…'}
+          </div>
+          <button className="relative p-1.5 text-slate-400 hover:text-slate-700 transition">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-rose-500 rounded-full ring-1 ring-white"></span>
+          </button>
+          <div className="w-px h-4 bg-slate-200"></div>
+          <div className="flex items-center gap-2 cursor-pointer">
+            <div className="w-7 h-7 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">SB</div>
+            <span className="text-[12px] font-medium text-slate-700">Shiven Bansal</span>
+            <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Page content — offset for fixed sidebar+topbar, window scrolls ── */}
+      <div className="ml-[220px] pt-14 min-h-screen">
+        <Outlet />
       </div>
 
-      <div className="flex items-center gap-4">
-        <InjectAttackControl />
-        <span className="readout text-text-secondary hidden sm:inline">
-          {now.toLocaleTimeString('en-US', { hour12: false })}
-        </span>
-      </div>
-    </header>
-  );
-};
-
-const AppLayout = () => {
-  return (
-    <div className="flex h-screen w-screen overflow-hidden bg-ink-0 text-text-primary font-sans">
-      <Rail />
-      <div className="flex flex-col flex-1 min-w-0">
-        <StatusBar />
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
-        </main>
-      </div>
     </div>
   );
 };

@@ -10,7 +10,11 @@ doesn't backtrack to try alternate groupings.
 """
 
 from datetime import timedelta
-from attack_templates import AttackTemplate, ALL_TEMPLATES
+
+try:  # works both as a package (backend) and as a script (python matcher.py)
+    from .attack_templates import AttackTemplate, ALL_TEMPLATES
+except ImportError:  # pragma: no cover
+    from attack_templates import AttackTemplate, ALL_TEMPLATES
 
 
 def match_template(graph, template: AttackTemplate, flagged_event_ids):
@@ -60,6 +64,8 @@ def match_template(graph, template: AttackTemplate, flagged_event_ids):
             if span <= timedelta(seconds=template.window_seconds):
                 matches.append({
                     "template_name": template.name,
+                    "display_name": template.display_name,
+                    "attack_type": template.attack_type,
                     "description": template.description,
                     "matched_events": [e["id"] for e in all_matched],
                     "entity": dict(zip(template.link_by, key)),
